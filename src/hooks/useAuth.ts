@@ -1,8 +1,18 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { createClient } from '@/lib/supabase/client';
-import type { User, AuthChangeEvent, Session } from '@supabase/supabase-js';
+import {
+  onAuthStateChanged,
+  signInWithPopup,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signOut as firebaseSignOut,
+  GoogleAuthProvider,
+  updateProfile,
+  type User,
+} from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { auth, db, isFirebaseConfigured } from '@/lib/firebase/config';
 
 interface AuthState {
   user: User | null;
@@ -11,61 +21,65 @@ interface AuthState {
 }
 
 export function useAuth() {
+  const configured = isFirebaseConfigured();
   const [state, setState] = useState<AuthState>({
     user: null,
-    isLoading: true,
+    isLoading: configured,
     isPremium: false,
   });
 
-  const supabase = createClient();
-
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event: AuthChangeEvent, session: Session | null) => {
-        const user = session?.user ?? null;
-        let isPremium = false;
+    if (!configured) return;
 
-        if (user) {
-          const { data } = await supabase
-            .from('profiles')
-            .select('plan')
-            .eq('id', user.id)
-            .single();
-          isPremium = data?.plan === 'pro';
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      let isPremium = false;
+      if (user) {
+        try {
+          const profileDoc = await getDoc(doc(db, 'profiles', user.uid));
+          isPremium = profileDoc.data()?.plan === 'pro';
+        } catch {
+          // Firestore henüz yapılandırılmamış
         }
-
-        setState({ user, isLoading: false, isPremium });
       }
-    );
+      setState({ user, isLoading: false, isPremium });
+    });
 
-    return () => subscription.unsubscribe();
-  }, [supabase]);
+    return () => unsubscribe();
+  }, []);
 
   const signInWithGoogle = useCallback(async () => {
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth/callback` },
-    });
-    if (error) throw error;
-  }, [supabase]);
+    const provider = new GoogleAuthProvider();
+    const result = await signInWithPopup(auth, provider);
+    const profileRef = doc(db, 'profiles', result.user.uid);
+    const profileDoc = await getDoc(profileRef);
+    if (!profileDoc.exists()) {
+      await setDoc(profileRef, {
+        name: result.user.displayName ?? '',
+        email: result.user.email,
+        plan: 'free',
+        createdAt: new Date().toISOString(),
+      });
+    }
+  }, []);
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
-  }, [supabase]);
+    await signInWithEmailAndPassword(auth, email, password);
+  }, []);
 
   const signUp = useCallback(async (email: string, password: string, name: string) => {
-    const { error } = await supabase.auth.signUp({
+    const result = await createUserWithEmailAndPassword(auth, email, password);
+    await updateProfile(result.user, { displayName: name });
+    await setDoc(doc(db, 'profiles', result.user.uid), {
+      name,
       email,
-      password,
-      options: { data: { name } },
+      plan: 'free',
+      createdAt: new Date().toISOString(),
     });
-    if (error) throw error;
-  }, [supabase]);
+  }, []);
 
   const signOut = useCallback(async () => {
-    await supabase.auth.signOut();
-  }, [supabase]);
+    await firebaseSignOut(auth);
+  }, []);
 
   return { ...state, signInWithGoogle, signInWithEmail, signUp, signOut };
 }

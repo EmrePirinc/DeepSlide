@@ -1,12 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import Stripe from 'stripe';
 
-function getSupabaseAdmin() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
+// Firebase Admin SDK — server-side only
+async function getFirebaseAdmin() {
+  const admin = await import('firebase-admin');
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      }),
+    });
+  }
+  return admin;
 }
 
 export async function POST(request: NextRequest) {
@@ -31,10 +38,11 @@ export async function POST(request: NextRequest) {
       if (customer.deleted) return;
       const userId = customer.metadata?.user_id;
       if (userId) {
-        await getSupabaseAdmin()
-          .from('profiles')
-          .update({ plan, updated_at: new Date().toISOString() })
-          .eq('id', userId);
+        const admin = await getFirebaseAdmin();
+        await admin.firestore().collection('profiles').doc(userId).update({
+          plan,
+          updatedAt: new Date().toISOString(),
+        });
       }
     };
 

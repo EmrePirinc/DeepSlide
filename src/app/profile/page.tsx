@@ -6,26 +6,28 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { useAuth } from '@/hooks/useAuth';
-import { createClient } from '@/lib/supabase/client';
+import { doc, setDoc } from 'firebase/firestore';
+import { updateProfile } from 'firebase/auth';
+import { db } from '@/lib/firebase/config';
 
 export default function ProfilePage() {
   const { user, isPremium, signOut } = useAuth();
-  const [name, setName] = useState(user?.user_metadata?.name ?? '');
+  const [name, setName] = useState(user?.displayName ?? '');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
   const handleSave = async () => {
     if (!user) return;
     setSaving(true);
-    const supabase = createClient();
-    await supabase.from('profiles').upsert({
-      id: user.id,
-      name,
-      updated_at: new Date().toISOString(),
-    });
+    try {
+      await updateProfile(user, { displayName: name });
+      await setDoc(doc(db, 'profiles', user.uid), { name }, { merge: true });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch {
+      // Hata
+    }
     setSaving(false);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
   };
 
   return (

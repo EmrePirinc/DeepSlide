@@ -1,57 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = await createServerSupabaseClient();
-    if (!supabase) {
-      return NextResponse.json({ error: 'Supabase not configured' }, { status: 500 });
-    }
-    const { data: { user } } = await supabase.auth.getUser();
+    const { plan, userId, email } = await request.json();
 
-    if (!user) {
+    if (!userId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { plan } = await request.json();
-    const priceId = plan === 'yearly'
-      ? process.env.STRIPE_YEARLY_PRICE_ID
-      : process.env.STRIPE_MONTHLY_PRICE_ID;
-
-    if (!priceId || !process.env.STRIPE_SECRET_KEY) {
-      // Stripe henüz yapılandırılmamış — demo modu
+    if (!process.env.STRIPE_SECRET_KEY) {
       return NextResponse.json({
         url: null,
         message: 'Stripe yapılandırılmamış. .env.local dosyasına STRIPE_SECRET_KEY ekleyin.',
       });
     }
 
-    // Stripe Checkout Session oluştur
-    const Stripe = (await import('stripe')).default;
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
+    const priceId = plan === 'yearly'
+      ? process.env.STRIPE_YEARLY_PRICE_ID
+      : process.env.STRIPE_MONTHLY_PRICE_ID;
 
-    // Mevcut customer var mı kontrol et
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('stripe_customer_id')
-      .eq('id', user.id)
-      .single();
-
-    let customerId = profile?.stripe_customer_id;
-
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: user.email,
-        metadata: { user_id: user.id },
-      });
-      customerId = customer.id;
-      await supabase
-        .from('profiles')
-        .upsert({ id: user.id, stripe_customer_id: customerId });
+    if (!priceId) {
+      return NextResponse.json({ url: null, message: 'Stripe price ID yapılandırılmamış.' });
     }
 
+    const Stripe = (await import('stripe')).default;
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+    const customer = await stripe.customers.create({
+      email,
+      metadata: { user_id: userId },
+    });
+
     const session = await stripe.checkout.sessions.create({
-      customer: customerId,
+      customer: customer.id,
       line_items: [{ price: priceId, quantity: 1 }],
       mode: 'subscription',
       success_url: `${request.nextUrl.origin}/billing?success=true`,
