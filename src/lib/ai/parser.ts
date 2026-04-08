@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 import type { AnalysisResult, AnalyzedKeyword } from './types';
 
 const VALID_CATEGORIES = ['object', 'concept', 'color', 'action', 'emotion', 'text'] as const;

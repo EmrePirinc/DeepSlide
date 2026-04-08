@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';

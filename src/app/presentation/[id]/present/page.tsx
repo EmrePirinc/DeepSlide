@@ -1,4 +1,7 @@
 'use client';
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 
 import { use, useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
@@ -14,6 +17,9 @@ import { AdaptiveControls } from '@/components/presentation/AdaptiveControls';
 import { SlideNavigator } from '@/components/presentation/SlideNavigator';
 import { KeywordHint } from '@/components/presentation/KeywordHint';
 import { TranscriptOverlay } from '@/components/speech/TranscriptOverlay';
+import { PaywallBanner } from '@/components/billing/PaywallBanner';
+import { WatermarkOverlay } from '@/components/billing/WatermarkOverlay';
+import { useSpeechPaywall } from '@/hooks/useSpeechPaywall';
 import { getTheme } from '@/lib/themes/presets';
 import type { ThemeId } from '@/lib/themes/types';
 
@@ -221,6 +227,17 @@ export default function PresentationModePage({
     togglePause();
   };
 
+  // Paywall: ses kontrolü sınırı
+  const imageCount = currentPresentation?.images.length ?? 0;
+  const { isPaywalled, voiceEnabled } = useSpeechPaywall(imageCount, Math.max(0, currentIdx));
+
+  // Paywall aktifken ses kontrolünü durdur
+  useEffect(() => {
+    if (isPaywalled && !isPaused) {
+      stopSpeech();
+    }
+  }, [isPaywalled, isPaused, stopSpeech]);
+
   const matchedKeyword = matches.length > 0 ? matches[0].keyword : undefined;
 
   const focusedImage = useMemo(() => {
@@ -353,6 +370,20 @@ export default function PresentationModePage({
           onSpeechStop={stopSpeech}
         />
       )}
+
+      {/* Paywall Banner — ses kontrolü durduğunda göster */}
+      {mode !== 'cover' && isPaywalled && (
+        <PaywallBanner
+          onUpgrade={() => {
+            stopSpeech();
+            stopPresentation();
+            router.push('/billing');
+          }}
+        />
+      )}
+
+      {/* Watermark — free sunumlarda */}
+      {mode !== 'cover' && <WatermarkOverlay />}
     </div>
   );
 }

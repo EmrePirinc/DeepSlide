@@ -1,4 +1,7 @@
 'use client';
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 
 import { use } from 'react';
 import { AppShell } from '@/components/layout/AppShell';

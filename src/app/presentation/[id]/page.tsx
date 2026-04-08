@@ -1,4 +1,7 @@
 'use client';
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 
 import { use, useEffect, useState, useCallback } from 'react';
 import { AppShell } from '@/components/layout/AppShell';
@@ -29,6 +32,9 @@ import { clusterImagesByKeywords } from '@/lib/utils/clustering';
 import { exportToPDF, downloadBlob } from '@/lib/export/pdfExport';
 import { exportToPPT } from '@/lib/export/pptExport';
 import type { PresentationImage, AIProviderType } from '@/types/presentation';
+import { ExportGate } from '@/components/billing/ExportGate';
+import { useAuth } from '@/hooks/useAuth';
+import { useRouter } from 'next/navigation';
 
 export default function PresentationEditorPage({
   params,
@@ -54,6 +60,9 @@ export default function PresentationEditorPage({
     null
   );
   const [showRehearsal, setShowRehearsal] = useState(false);
+  const [showExportGate, setShowExportGate] = useState(false);
+  const { isPremium } = useAuth();
+  const router = useRouter();
 
   useEffect(() => {
     loadPresentation(id);
@@ -133,19 +142,28 @@ export default function PresentationEditorPage({
                     variant="outline"
                     size="sm"
                     onClick={async () => {
+                      if (!isPremium) { setShowExportGate(true); return; }
                       const blob = await exportToPDF(currentPresentation);
                       downloadBlob(blob, `${currentPresentation.title}.html`);
                     }}
                   >
-                    HTML Export
+                    PDF Export {!isPremium && <span className="ml-1 text-xs text-primary">Pro</span>}
                   </Button>
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => exportToPPT(currentPresentation)}
+                    onClick={() => {
+                      if (!isPremium) { setShowExportGate(true); return; }
+                      exportToPPT(currentPresentation);
+                    }}
                   >
-                    Slayt Export
+                    PPT Export {!isPremium && <span className="ml-1 text-xs text-primary">Pro</span>}
                   </Button>
+                  <ExportGate
+                    open={showExportGate}
+                    onClose={() => setShowExportGate(false)}
+                    onUpgrade={() => router.push('/billing')}
+                  />
                 </div>
               )}
             </div>

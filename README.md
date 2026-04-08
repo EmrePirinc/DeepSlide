@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# DeepSlide
 
-## Getting Started
+AI-powered voice-controlled presentation app. Speak and your slides follow you.
 
-First, run the development server:
+**"Siz konuşun, sunumunuz sizi takip etsin."**
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Features
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- Upload hundreds of images, AI extracts keywords automatically
+- Voice-controlled presentation: say keywords, slides zoom to full screen
+- Prezi-style zoom transitions (Zoom, Fade, Pan)
+- 3 AI providers: Google Gemini (API), Qwen 3.5 (local), Gemma 4 (local)
+- 3 themes: Dark Professional, Light Minimalist, Blue Corporate
+- Rehearsal mode with confidence scoring
+- Keyword editing with synonym support
+- Firebase Auth + Firestore
+- Freemium monetization with Stripe/iyzico
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Tech Stack
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Next.js 15 (App Router) + TypeScript
+- Tailwind CSS + shadcn/ui
+- Zustand (state management)
+- Motion (animations)
+- Firebase (auth + database)
+- Ollama (local AI models)
 
-## Learn More
+## License
 
-To learn more about Next.js, take a look at the following resources:
+This project is licensed under the [Business Source License 1.1](LICENSE).
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+**You may NOT:**
+- Use this code to create a competing presentation service
+- Host this as a commercial SaaS offering
+- Redistribute for commercial purposes
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+**You MAY:**
+- Use for personal, non-commercial purposes
+- Study and learn from the code
+- Contribute improvements back
 
-## Deploy on Vercel
+For commercial licensing, contact the author.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+© 2026 Emre Pirinc. All rights reserved.

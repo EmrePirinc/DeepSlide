@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 import type { Variants } from 'motion/react';
 
 export function createImageCardVariants(zoomScale: number = 1.8): Variants {

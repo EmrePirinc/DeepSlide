@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 import type { TransitionType, TransitionProvider } from './types';
 import { zoomTransition } from './zoom';
 import { fadeTransition } from './fade';

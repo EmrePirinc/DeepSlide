@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 export type AnalysisLanguage = 'tr' | 'en' | 'de' | 'fr';
 
 const LANGUAGE_INSTRUCTIONS: Record<AnalysisLanguage, string> = {

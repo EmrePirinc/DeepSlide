@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 /**
  * İki string arasındaki Levenshtein mesafesini hesaplar.
  */

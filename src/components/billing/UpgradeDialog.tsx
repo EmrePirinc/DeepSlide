@@ -1,4 +1,7 @@
 'use client';
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 
 import { Button } from '@/components/ui/button';
 import {
@@ -7,7 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { PLANS } from '@/lib/billing/plans';
+import { PLANS, getRegionalPrice } from '@/lib/billing/plans';
 
 interface UpgradeDialogProps {
   open: boolean;
@@ -17,6 +20,7 @@ interface UpgradeDialogProps {
 
 export function UpgradeDialog({ open, onClose, reason }: UpgradeDialogProps) {
   const pro = PLANS.pro;
+  const price = getRegionalPrice('TR');
 
   const handleUpgrade = async () => {
     try {
@@ -44,17 +48,17 @@ export function UpgradeDialog({ open, onClose, reason }: UpgradeDialogProps) {
         <div className="border rounded-lg p-4 space-y-3 mt-4">
           <h3 className="font-semibold">{pro.name} Plan</h3>
           <ul className="text-sm space-y-1">
-            <li>Sınırsız sunum</li>
+            <li>Sınırsız sunum + ses kontrolü</li>
             <li>Sunum başına 500 görsel</li>
-            <li>Bulut depolama & senkronizasyon</li>
-            <li>Sunum analitik raporu</li>
-            <li>Link & QR code paylaşım</li>
+            <li>PDF/PPT export</li>
+            <li>Watermark yok</li>
+            <li>Bulut depolama (yakında)</li>
           </ul>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold">${pro.price.monthly}</span>
+            <span className="text-2xl font-bold">{price.symbol}{price.monthly}</span>
             <span className="text-muted-foreground">/ay</span>
             <span className="text-xs text-muted-foreground ml-2">
-              veya ${pro.price.yearly}/yıl (%20 indirim)
+              veya {price.symbol}{price.yearly}/yıl (%25 indirim)
             </span>
           </div>
         </div>

@@ -1,22 +1,29 @@
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 import { NextResponse, type NextRequest } from 'next/server';
 
-// Firebase client-side auth kullanır.
-// Server-side middleware'da sadece basit route koruması yapılır.
-// Gerçek auth kontrolü client-side AuthGuard bileşeninde yapılır.
-
 export async function middleware(request: NextRequest) {
-  // API, statik dosya ve auth sayfalarını atla
-  if (
-    request.nextUrl.pathname.startsWith('/api') ||
-    request.nextUrl.pathname.startsWith('/_next') ||
-    request.nextUrl.pathname.startsWith('/auth') ||
-    request.nextUrl.pathname.startsWith('/share') ||
-    request.nextUrl.pathname.includes('.')
-  ) {
-    return NextResponse.next();
+  const response = NextResponse.next();
+
+  // Güvenlik header'ları
+  response.headers.set('X-Content-Type-Options', 'nosniff');
+  response.headers.set('X-Frame-Options', 'DENY');
+  response.headers.set('X-XSS-Protection', '1; mode=block');
+  response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  response.headers.set(
+    'Permissions-Policy',
+    'camera=(), geolocation=(), microphone=(self)',
+  );
+
+  // CORS: API route'ları için
+  if (request.nextUrl.pathname.startsWith('/api')) {
+    response.headers.set('Access-Control-Allow-Origin', request.nextUrl.origin);
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type');
   }
 
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 import type { SpeechProviderType } from '@/types/presentation';
 import type { SpeechProviderInterface } from './types';
 import { WebSpeechAdapter } from './providers/webSpeechAdapter';

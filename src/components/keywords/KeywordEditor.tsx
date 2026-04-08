@@ -1,4 +1,7 @@
 'use client';
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';

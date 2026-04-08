@@ -1,6 +1,9 @@
 'use client';
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
 
-import { useState, Suspense } from 'react';
+
+import { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -22,7 +25,12 @@ function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirect = searchParams.get('redirect') ?? '/';
-  const { signInWithGoogle, signInWithEmail } = useAuth();
+  const { user, signInWithGoogle, signInWithEmail } = useAuth();
+
+  // Zaten giriş yapmışsa yönlendir
+  useEffect(() => {
+    if (user) router.push(redirect);
+  }, [user, router, redirect]);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -46,6 +54,7 @@ function LoginContent() {
   const handleGoogleLogin = async () => {
     try {
       await signInWithGoogle();
+      router.push(redirect);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Google giriş hatası');
     }

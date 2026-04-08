@@ -1,4 +1,7 @@
 'use client';
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 
 import { useState } from 'react';
 import Link from 'next/link';
@@ -15,6 +18,7 @@ export default function SignUpPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [kvkkAccepted, setKvkkAccepted] = useState(false);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,9 +80,25 @@ export default function SignUpPage() {
           <Input type="email" placeholder="E-posta" value={email} onChange={(e) => setEmail(e.target.value)} required />
           <Input type="password" placeholder="Şifre (min 6 karakter)" value={password} onChange={(e) => setPassword(e.target.value)} required />
 
+          <label className="flex items-start gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={kvkkAccepted}
+              onChange={(e) => setKvkkAccepted(e.target.checked)}
+              className="mt-1 rounded"
+              required
+            />
+            <span className="text-muted-foreground">
+              <a href="/privacy" target="_blank" className="text-primary underline">Gizlilik Politikasi</a>
+              {' '}ve{' '}
+              <a href="/terms" target="_blank" className="text-primary underline">Kullanim Kosullari</a>
+              &apos;ni okudum ve kabul ediyorum.
+            </span>
+          </label>
+
           {error && <p className="text-sm text-destructive">{error}</p>}
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading || !kvkkAccepted}>
             {loading ? 'Kayıt yapılıyor...' : 'Kayıt Ol'}
           </Button>
         </form>

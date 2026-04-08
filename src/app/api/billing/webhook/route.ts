@@ -1,7 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server';
-import Stripe from 'stripe';
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
 
-// Firebase Admin SDK — server-side only
+import { NextRequest, NextResponse } from 'next/server';
+import { rateLimitWebhook } from '@/lib/utils/apiGuard';
+
+// TODO: İyzico paneli açılınca webhook URL'sini ayarla:
+//   Panel → Ayarlar → Bildirimler → Webhook URL:
+//   https://DOMAIN.vercel.app/api/billing/webhook
+//
+// TODO: Subscription event'lerini test et:
+//   - subscription.order.success → plan Pro olmalı
+//   - subscription.order.failure → subscriptionStatus past_due olmalı
+//   - subscription.cancelled → plan Free'ye düşmeli
+//
+// TODO: Firebase Admin key'leri .env.local'a ekle (callback/route.ts ile aynı)
+
 async function getFirebaseAdmin() {
   const admin = await import('firebase-admin');
   if (!admin.apps.length) {
@@ -16,51 +29,82 @@ async function getFirebaseAdmin() {
   return admin;
 }
 
+// İyzico subscription webhook'ları
 export async function POST(request: NextRequest) {
+  const rateLimited = rateLimitWebhook(request);
+  if (rateLimited) return rateLimited;
+
   try {
-    if (!process.env.STRIPE_WEBHOOK_SECRET || !process.env.STRIPE_SECRET_KEY) {
-      return NextResponse.json({ error: 'Stripe not configured' }, { status: 500 });
+    const body = await request.json();
+
+    const eventType = body.iyziEventType as string | undefined;
+    const subscriptionRef = body.subscriptionReferenceCode as string | undefined;
+
+    if (!eventType) {
+      return NextResponse.json({ error: 'Missing iyziEventType' }, { status: 400 });
     }
 
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-    const body = await request.text();
-    const signature = request.headers.get('stripe-signature') ?? '';
+    const admin = await getFirebaseAdmin();
+    const firestore = admin.firestore();
 
-    let event: Stripe.Event;
-    try {
-      event = stripe.webhooks.constructEvent(body, signature, process.env.STRIPE_WEBHOOK_SECRET);
-    } catch {
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
+    // iyzicoSubscriptionRef ile kullanıcıyı bul
+    async function findUserBySubscriptionRef(ref: string): Promise<string | null> {
+      const snapshot = await firestore
+        .collection('profiles')
+        .where('iyzicoSubscriptionRef', '==', ref)
+        .limit(1)
+        .get();
+      if (snapshot.empty) return null;
+      return snapshot.docs[0].id;
     }
 
-    const updatePlan = async (customerId: string, plan: string) => {
-      const customer = await stripe.customers.retrieve(customerId);
-      if (customer.deleted) return;
-      const userId = customer.metadata?.user_id;
-      if (userId) {
-        const admin = await getFirebaseAdmin();
-        await admin.firestore().collection('profiles').doc(userId).update({
-          plan,
-          updatedAt: new Date().toISOString(),
-        });
-      }
-    };
-
-    switch (event.type) {
-      case 'checkout.session.completed': {
-        const session = event.data.object as Stripe.Checkout.Session;
-        if (typeof session.customer === 'string') {
-          await updatePlan(session.customer, 'pro');
+    switch (eventType) {
+      case 'subscription.order.success': {
+        // Aylık yenileme başarılı
+        if (!subscriptionRef) break;
+        const userId = await findUserBySubscriptionRef(subscriptionRef);
+        if (userId) {
+          await firestore.collection('profiles').doc(userId).update({
+            plan: 'pro',
+            subscriptionStatus: 'active',
+            updatedAt: new Date().toISOString(),
+          });
         }
         break;
       }
-      case 'customer.subscription.deleted': {
-        const subscription = event.data.object as Stripe.Subscription;
-        if (typeof subscription.customer === 'string') {
-          await updatePlan(subscription.customer, 'free');
+
+      case 'subscription.order.failure': {
+        // Aylık yenileme başarısız
+        // TODO: Grace period email gönder (1., 3., 7. gün)
+        // TODO: 7 gün sonra hâlâ başarısızsa plan Free'ye düşür
+        if (!subscriptionRef) break;
+        const userId = await findUserBySubscriptionRef(subscriptionRef);
+        if (userId) {
+          await firestore.collection('profiles').doc(userId).update({
+            subscriptionStatus: 'past_due',
+            updatedAt: new Date().toISOString(),
+          });
         }
         break;
       }
+
+      case 'subscription.cancelled': {
+        // Abonelik iptal edildi
+        if (!subscriptionRef) break;
+        const userId = await findUserBySubscriptionRef(subscriptionRef);
+        if (userId) {
+          await firestore.collection('profiles').doc(userId).update({
+            plan: 'free',
+            subscriptionStatus: 'none',
+            iyzicoSubscriptionRef: null,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        break;
+      }
+
+      default:
+        console.log('Unhandled iyzico event:', eventType);
     }
 
     return NextResponse.json({ received: true });

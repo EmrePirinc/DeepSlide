@@ -1,4 +1,7 @@
 'use client';
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 
 import { useState, useCallback } from 'react';
 import type { PresentationImage } from '@/types/presentation';
@@ -12,9 +15,9 @@ import {
   isValidFileSize,
   THUMBNAIL_WIDTH,
   MAX_FILE_SIZE_MB,
-  MAX_FILES_FREE,
-  MAX_FILES_TOTAL,
 } from '@/lib/utils/imageProcessing';
+import { useAuth } from '@/hooks/useAuth';
+import { canUploadImage } from '@/lib/billing/plans';
 
 interface UploadProgress {
   total: number;
@@ -31,6 +34,7 @@ interface UseImageUploadReturn {
 
 export function useImageUpload(): UseImageUploadReturn {
   const { currentPresentation, addImages } = usePresentationStore();
+  const { profile } = useAuth();
   const [isUploading, setIsUploading] = useState(false);
   const [progress, setProgress] = useState<UploadProgress>({
     total: 0,
@@ -44,21 +48,21 @@ export function useImageUpload(): UseImageUploadReturn {
       if (!currentPresentation) return;
 
       const currentImageCount = currentPresentation.images.length;
-      const remainingSlots = MAX_FILES_TOTAL - currentImageCount;
-      const freeSlots = MAX_FILES_FREE - currentImageCount;
 
-      // Freemium sınır kontrolü
-      if (freeSlots <= 0) {
+      if (!canUploadImage(profile.plan, currentImageCount)) {
         setProgress({
           total: 0,
           completed: 0,
           failed: files.length,
           errors: [
-            `Ücretsiz planda maksimum ${MAX_FILES_FREE} görsel yükleyebilirsiniz. Premium'a geçin.`,
+            'Maksimum görsel sınırına ulaştınız (500). Bazı görselleri silip tekrar deneyin.',
           ],
         });
         return;
       }
+
+      const maxUpload = profile.plan === 'pro' ? 500 : 500;
+      const remainingSlots = maxUpload - currentImageCount;
 
       // Geçerli dosyaları filtrele
       const validFiles: File[] = [];
@@ -77,7 +81,7 @@ export function useImageUpload(): UseImageUploadReturn {
       }
 
       // Slot sınırı
-      const filesToProcess = validFiles.slice(0, Math.min(remainingSlots, freeSlots));
+      const filesToProcess = validFiles.slice(0, remainingSlots);
       if (filesToProcess.length < validFiles.length) {
         errors.push(
           `${validFiles.length - filesToProcess.length} dosya sınır nedeniyle atlandı.`
@@ -166,7 +170,7 @@ export function useImageUpload(): UseImageUploadReturn {
 
       setIsUploading(false);
     },
-    [currentPresentation, addImages]
+    [currentPresentation, addImages, profile.plan]
   );
 
   return { uploadFiles, progress, isUploading };

@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 import { NextRequest, NextResponse } from 'next/server';
 import { getImageAnalysisPrompt, type AnalysisLanguage } from '@/lib/ai/prompts';
 import { parseAnalysisResponse } from '@/lib/ai/parser';

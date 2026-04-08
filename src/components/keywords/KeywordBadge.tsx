@@ -1,4 +1,7 @@
 'use client';
+// Copyright (c) 2026 Emre Pirinc. All rights reserved.
+// Licensed under the Business Source License 1.1
+
 
 import { Badge } from '@/components/ui/badge';
 import type { Keyword, KeywordCategory } from '@/types/presentation';
