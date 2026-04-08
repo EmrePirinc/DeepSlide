@@ -12,8 +12,8 @@ import { rateLimitBilling } from '@/lib/utils/apiGuard';
 //
 // TODO: İyzico panelinde Subscription Product + Plan oluştur:
 //   1. Panel → Abonelik → Ürün Oluştur ("DeepSlide Pro")
-//   2. Aylık Plan: ₺99/ay → referans kodunu IYZICO_MONTHLY_PLAN_REF'e ekle
-//   3. Yıllık Plan: ₺888/yıl → referans kodunu IYZICO_YEARLY_PLAN_REF'e ekle
+//   2. Aylık Plan: ₺200/ay → referans kodunu IYZICO_MONTHLY_PLAN_REF'e ekle
+//   3. Yıllık Plan: ₺1800/yıl → referans kodunu IYZICO_YEARLY_PLAN_REF'e ekle
 //
 // TODO: Prod'a geçerken:
 //   - IYZICO_URI'yi https://api.iyzipay.com olarak değiştir
@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     const iyzico = getIyzico();
     const origin = request.nextUrl.origin;
 
-    const price = plan === 'yearly' ? '888.00' : '99.00';
+    const price = plan === 'yearly' ? '1800.00' : '200.00';
     const pricingPlanRef = plan === 'yearly'
       ? process.env.IYZICO_YEARLY_PLAN_REF
       : process.env.IYZICO_MONTHLY_PLAN_REF;

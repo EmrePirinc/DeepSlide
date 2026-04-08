@@ -25,7 +25,7 @@ export interface RegionalPrice {
 }
 
 export const REGIONAL_PRICES: Record<string, RegionalPrice> = {
-  TR: { currency: 'TRY', symbol: '₺', monthly: 99, yearly: 888 },
+  TR: { currency: 'TRY', symbol: '₺', monthly: 200, yearly: 1800 },
   US: { currency: 'USD', symbol: '$', monthly: 12, yearly: 108 },
   EU: { currency: 'EUR', symbol: '€', monthly: 10, yearly: 90 },
   IN: { currency: 'INR', symbol: '₹', monthly: 249, yearly: 2244 },
