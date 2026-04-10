@@ -9,6 +9,15 @@ const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434';
 const GEMMA_MODEL = process.env.GEMMA_MODEL ?? 'gemma4:e2b';
 
 export async function POST(request: NextRequest) {
+  // Vercel / bulut ortamında Ollama çalışmaz
+  const isLocalhost = OLLAMA_URL.includes('localhost') || OLLAMA_URL.includes('127.0.0.1');
+  if (isLocalhost && process.env.VERCEL) {
+    return NextResponse.json(
+      { error: 'Gemma yerel Ollama sunucusunda çalışır. Vercel ortamında kullanılamaz. Lütfen Gemini seçin.' },
+      { status: 503 }
+    );
+  }
+
   try {
     const { imageBase64, mimeType, language, keywordCount } = await request.json();
     if (!imageBase64 || !mimeType) {

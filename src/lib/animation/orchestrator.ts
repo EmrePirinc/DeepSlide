@@ -3,13 +3,19 @@
 
 /**
  * Animasyon Orchestrator.
- * Keyword eşleşmesi sonrası görsel relevance skorunu yönetir.
- * Temporal decay: eşleşme sonrası her 2 saniyede -0.1, <0.3'te geri küçülme.
+ *
+ * Prezi modu: sesle eşleşen tek görsel tam ekrana odaklanır.
+ * Orchestrator, `focusImage()` üzerinden çalışır — en iyi skoru olan
+ * tek bir görsel seçilir, diğerleri devre dışı kalır.
+ *
+ * Overview timeout: 10sn (ayarlanabilir) sessizlik sonrası overview'e dönüş.
+ * Temporal decay: eski eşleşme skoru zamanla düşer — yeni keyword gelince geçiş yapar.
  */
 export class AnimationOrchestrator {
   private relevanceScores = new Map<string, number>();
   private decayInterval: ReturnType<typeof setInterval> | null = null;
-  private onChange: ((activeIds: string[]) => void) | null = null;
+  private onChange: ((activeIds: string[], focusedId: string | null) => void) | null = null;
+  private currentFocusedId: string | null = null;
 
   private readonly DECAY_INTERVAL_MS = 2000;
   private readonly DECAY_AMOUNT = 0.1;
@@ -17,18 +23,33 @@ export class AnimationOrchestrator {
 
   /**
    * Değişiklik callback'i ayarla.
+   * activeIds: threshold üstü tüm görsel ID'leri
+   * focusedId: en yüksek skora sahip tek görsel (Prezi zoom hedefi)
    */
-  setOnChange(callback: (activeIds: string[]) => void): void {
+  setOnChange(callback: (activeIds: string[], focusedId: string | null) => void): void {
     this.onChange = callback;
   }
 
   /**
    * Eşleşen görsel ID'lerini aktive et (relevance = 1.0).
+   * Geriye uyumluluk için korundu.
    */
   activateImages(imageIds: string[]): void {
     for (const id of imageIds) {
       this.relevanceScores.set(id, 1.0);
     }
+    this.updateFocus();
+    this.notifyChange();
+    this.ensureDecayRunning();
+  }
+
+  /**
+   * Tek görsel odakla — en iyi keyword match sonucundan çağrılır.
+   * Diğer görsellerin relevance skoru decay'e devam eder.
+   */
+  focusImage(imageId: string, score: number = 1.0): void {
+    this.relevanceScores.set(imageId, Math.min(1.0, score));
+    this.currentFocusedId = imageId;
     this.notifyChange();
     this.ensureDecayRunning();
   }
@@ -54,6 +75,30 @@ export class AnimationOrchestrator {
   }
 
   /**
+   * Mevcut odaklanılan görsel ID'sini döndürür.
+   */
+  getFocusedId(): string | null {
+    return this.currentFocusedId;
+  }
+
+  /**
+   * Decay sonrası en yüksek skora sahip görseli focused olarak güncelle.
+   */
+  private updateFocus(): void {
+    let maxScore = 0;
+    let maxId: string | null = null;
+
+    for (const [id, score] of this.relevanceScores) {
+      if (score > maxScore) {
+        maxScore = score;
+        maxId = id;
+      }
+    }
+
+    this.currentFocusedId = maxScore >= this.DEACTIVATE_THRESHOLD ? maxId : null;
+  }
+
+  /**
    * Decay döngüsünü başlat.
    */
   private ensureDecayRunning(): void {
@@ -75,10 +120,10 @@ export class AnimationOrchestrator {
       }
 
       if (changed) {
+        this.updateFocus();
         this.notifyChange();
       }
 
-      // Hiç aktif görsel kalmadıysa decay'i durdur
       if (this.relevanceScores.size === 0 && this.decayInterval) {
         clearInterval(this.decayInterval);
         this.decayInterval = null;
@@ -86,18 +131,13 @@ export class AnimationOrchestrator {
     }, this.DECAY_INTERVAL_MS);
   }
 
-  /**
-   * Aktif görsel listesini callback ile bildir.
-   */
   private notifyChange(): void {
-    this.onChange?.(this.getActiveIds());
+    this.onChange?.(this.getActiveIds(), this.currentFocusedId);
   }
 
-  /**
-   * Tüm state'i temizle.
-   */
   reset(): void {
     this.relevanceScores.clear();
+    this.currentFocusedId = null;
     if (this.decayInterval) {
       clearInterval(this.decayInterval);
       this.decayInterval = null;
@@ -105,9 +145,6 @@ export class AnimationOrchestrator {
     this.notifyChange();
   }
 
-  /**
-   * Cleanup.
-   */
   destroy(): void {
     this.reset();
     this.onChange = null;

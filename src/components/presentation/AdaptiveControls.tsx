@@ -6,6 +6,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { SpeechControls } from '@/components/speech/SpeechControls';
+import { downloadSRT } from '@/lib/subtitle/srtExporter';
+import { useTranscriptStore } from '@/stores/transcriptStore';
 import type { SpeechProviderType } from '@/types/presentation';
 
 interface AdaptiveControlsProps {
@@ -16,6 +18,7 @@ interface AdaptiveControlsProps {
   lang: string;
   onSpeechStart: (provider: SpeechProviderType, lang: string) => void;
   onSpeechStop: () => void;
+  presentationTitle?: string;
 }
 
 export function AdaptiveControls({
@@ -26,7 +29,10 @@ export function AdaptiveControls({
   lang,
   onSpeechStart,
   onSpeechStop,
+  presentationTitle = 'sunum',
 }: AdaptiveControlsProps) {
+  const { entries, getWordCount } = useTranscriptStore();
+  const canDownloadSRT = getWordCount() >= 50;
   const [visible, setVisible] = useState(true);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -103,6 +109,17 @@ export function AdaptiveControls({
               provider={speechProvider}
               lang={lang}
             />
+            {canDownloadSRT && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-white/70 hover:text-white hover:bg-white/20"
+                onClick={() => downloadSRT(entries, presentationTitle)}
+                title="Alt yazıyı SRT olarak indir"
+              >
+                ↓ SRT
+              </Button>
+            )}
           </div>
           <Button
             variant="ghost"

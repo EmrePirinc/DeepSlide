@@ -18,7 +18,7 @@ export function useSpeechPaywall(
   imageCount: number,
   currentSlideIndex: number,
 ): SpeechPaywallResult {
-  const { profile, isPremium } = useAuth();
+  const { profile } = useAuth();
 
   return useMemo(() => {
     const trialActive = profile.trialRemaining > 0;
@@ -35,5 +35,5 @@ export function useSpeechPaywall(
       paywallSlideIndex: FREE_VOICE_SLIDES,
       trialActive,
     };
-  }, [profile.plan, profile.trialRemaining, imageCount, currentSlideIndex, isPremium]);
+  }, [profile.plan, profile.trialRemaining, imageCount, currentSlideIndex]);
 }

@@ -1,6 +1,6 @@
 # Active Context
 
-## Current Session Focus (2026-04-08)
+## Current Session Focus (2026-04-09)
 
 ### What Was Completed This Session
 - `.clinerules` Memory Bank system created and configured
@@ -46,11 +46,23 @@
 - Ollama models require user to have Ollama running locally (no graceful error UX yet)
 - Analytics page is present but not wired to real data yet
 
-### Next Steps (Faz 2 remaining)
-1. Cloud sync: Save presentations to Firestore (currently IndexedDB only)
-2. Wire analytics dashboard to real session recorder data
-3. Share link: Public presentation URL + QR code
-4. BB#3 sessions 2-5 (Faz 2 feature prioritization)
+### BB#4 + /bap + /wbs Tamamlandı (2026-04-09)
+- **BB#4**: 10 özellik oylama ile sıralandı, tümü onaylandı
+- **/bap → SPEC.md**: 19 FR + 13 NFR + DoR/DoD yazıldı
+- **/wbs → WBS.md**: 42 atomik görev, 11 Quality Gate, AI Prompt Template
+- **CLAUDE.md**: Proje yapısı, standartlar, WBS durumu güncellendi
+- **Premium fiyat**: 99 TL → 200 TL/ay, 888 TL → 1800 TL/yıl
+
+### Mevcut WBS Durumu
+Aktif Görev: WBS-1.1.1.1.1 (recordingService.ts) — BAŞLANMADI
+Faz: 2A Sprint 1 — Video Kayıt
+Paralel başlangıç: WBS-1.1.1.1.1 + WBS-1.1.2.1.1
+
+### Next Steps (Faz 2B Kodlama)
+1. WBS-1.1.1.1.1: `src/lib/recording/recordingService.ts` — MediaRecorder
+2. WBS-1.1.2.1.1: `src/lib/recording/recordingBuffer.ts` — IndexedDB (paralel)
+3. Paketleri yükle: `npm install @aws-sdk/client-s3 resend @deepgram/sdk`
+4. `.env.local`'a R2, Resend, Deepgram, LiveKit key'lerini ekle
 
 ### Important File Corrections (verified from source)
 - AI API routes: `/api/analyze` (Gemini), `/api/analyze-qwen`, `/api/analyze-gemma`

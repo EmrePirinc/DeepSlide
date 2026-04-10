@@ -85,4 +85,9 @@ export const SPEECH_PROVIDER_OPTIONS = [
     label: 'Whisper (Çevrimdışı)',
     description: 'Çevrimdışı çalışır. İlk seferde model indirilir (~200MB).',
   },
+  {
+    value: 'deepgram' as SpeechProviderType,
+    label: 'Deepgram Nova-2',
+    description: 'Gürültülü ortamda yüksek doğruluk. Türkçe desteği güçlü. Pro özellik.',
+  },
 ];

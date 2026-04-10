@@ -41,11 +41,13 @@ export function FocusedSlide({
       <AnimatePresence mode="wait">
         <motion.div
           key={image.id}
+          layoutId={`slide-${image.id}`}
           className="relative w-full h-full flex items-center justify-center"
           variants={transition.enter}
           initial="initial"
           animate="animate"
           exit="exit"
+          transition={{ type: 'spring', stiffness: 200, damping: 30 }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img

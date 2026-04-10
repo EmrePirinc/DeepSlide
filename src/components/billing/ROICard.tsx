@@ -23,7 +23,7 @@ export function ROICard({
   onDismiss,
   cumulativeHoursSaved,
 }: ROICardProps) {
-  const { isPremium, profile } = useAuth();
+  const { isPremium } = useAuth();
   const price = getRegionalPrice('TR');
 
   const traditionalMinutes = imageCount * 2;

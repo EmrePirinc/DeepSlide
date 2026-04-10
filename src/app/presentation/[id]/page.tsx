@@ -33,6 +33,7 @@ import { exportToPDF, downloadBlob } from '@/lib/export/pdfExport';
 import { exportToPPT } from '@/lib/export/pptExport';
 import type { PresentationImage, AIProviderType } from '@/types/presentation';
 import { ExportGate } from '@/components/billing/ExportGate';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/useAuth';
 import { useRouter } from 'next/navigation';
 
@@ -121,7 +122,20 @@ export default function PresentationEditorPage({
     <AppShell>
       <div className="max-w-6xl mx-auto space-y-4">
         {isLoading ? (
-          <div className="h-64 bg-muted animate-pulse rounded-lg" />
+          <div className="space-y-4">
+            <div className="flex items-start justify-between">
+              <div className="space-y-2">
+                <Skeleton className="h-8 w-64" />
+                <Skeleton className="h-4 w-40" />
+              </div>
+              <Skeleton className="h-9 w-32" />
+            </div>
+            <div className="grid grid-cols-4 gap-3">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="aspect-square rounded-lg" />
+              ))}
+            </div>
+          </div>
         ) : currentPresentation ? (
           <>
             {/* Başlık */}

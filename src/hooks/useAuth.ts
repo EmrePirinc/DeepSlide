@@ -23,7 +23,7 @@ export interface UserProfile {
   trialRemaining: number;
   monthlyPresentationsUsed: number;
   monthlyResetDate: string;
-  stripeCustomerId?: string;
+  iyzicoSubscriptionRef?: string;
   subscriptionStatus?: 'active' | 'canceled' | 'past_due' | 'none';
   currentPeriodEnd?: string;
 }
@@ -97,7 +97,7 @@ export function useAuth() {
             trialRemaining: data.trialRemaining ?? 0,
             monthlyPresentationsUsed: data.monthlyPresentationsUsed ?? 0,
             monthlyResetDate: data.monthlyResetDate ?? getMonthlyResetDate(),
-            stripeCustomerId: data.stripeCustomerId,
+            iyzicoSubscriptionRef: data.iyzicoSubscriptionRef,
             subscriptionStatus: data.subscriptionStatus ?? 'none',
             currentPeriodEnd: data.currentPeriodEnd,
           };

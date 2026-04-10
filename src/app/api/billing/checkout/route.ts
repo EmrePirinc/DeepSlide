@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Iyzipay from 'iyzipay';
 import { rateLimitBilling } from '@/lib/utils/apiGuard';
+import { iyzicoRequest } from '@/lib/billing/iyzico';
 
 // TODO: İyzico paneli açılınca sandbox API key'leri .env.local'a ekle:
 //   IYZICO_API_KEY=sandbox-...
@@ -18,14 +19,6 @@ import { rateLimitBilling } from '@/lib/utils/apiGuard';
 // TODO: Prod'a geçerken:
 //   - IYZICO_URI'yi https://api.iyzipay.com olarak değiştir
 //   - Live API key'leri ekle
-
-function getIyzico(): Iyzipay {
-  return new Iyzipay({
-    apiKey: process.env.IYZICO_API_KEY!,
-    secretKey: process.env.IYZICO_SECRET_KEY!,
-    uri: process.env.IYZICO_URI ?? 'https://sandbox-api.iyzipay.com',
-  });
-}
 
 export async function POST(request: NextRequest) {
   const rateLimited = rateLimitBilling(request);
@@ -46,7 +39,6 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const iyzico = getIyzico();
     const origin = request.nextUrl.origin;
 
     const price = plan === 'yearly' ? '1800.00' : '200.00';
@@ -81,12 +73,9 @@ export async function POST(request: NextRequest) {
         },
       };
 
-      const result = await new Promise<Record<string, unknown>>((resolve, reject) => {
-        iyzico.subscriptionCheckoutForm.initialize(subscriptionRequest, (err: unknown, res: Record<string, unknown>) => {
-          if (err) return reject(err);
-          resolve(res);
-        });
-      });
+      const result = await iyzicoRequest<Record<string, unknown>>((iyzico, cb) =>
+        iyzico.subscriptionCheckoutForm.initialize(subscriptionRequest, cb),
+      );
 
       if (result.status === 'success' && result.checkoutFormContent) {
         return NextResponse.json({
@@ -145,12 +134,9 @@ export async function POST(request: NextRequest) {
       ],
     };
 
-    const result = await new Promise<Record<string, unknown>>((resolve, reject) => {
-      iyzico.checkoutFormInitialize.create(checkoutRequest, (err: unknown, res: Record<string, unknown>) => {
-        if (err) return reject(err);
-        resolve(res);
-      });
-    });
+    const result = await iyzicoRequest<Record<string, unknown>>((iyzico, cb) =>
+      iyzico.checkoutFormInitialize.create(checkoutRequest, cb),
+    );
 
     if (result.status === 'success') {
       return NextResponse.json({

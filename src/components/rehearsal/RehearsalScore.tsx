@@ -6,6 +6,7 @@
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
+import { SynonymSuggestion } from './SynonymSuggestion';
 
 interface RehearsalResult {
   totalWords: number;
@@ -22,6 +23,7 @@ interface RehearsalScoreProps {
 
 export function RehearsalScore({
   result,
+  onAddSynonym,
   onRetry,
 }: RehearsalScoreProps) {
   const { confidenceScore, totalWords, matchedWords, unmatchedKeywords } = result;
@@ -78,9 +80,10 @@ export function RehearsalScore({
               </span>
             ))}
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            Bu kelimeleri konuşmanıza ekleyin veya görsellere synonym ekleyin.
-          </p>
+          <SynonymSuggestion
+            unmatchedKeywords={unmatchedKeywords}
+            onAdd={(keyword, synonym) => onAddSynonym('', '', synonym)}
+          />
         </div>
       )}
 

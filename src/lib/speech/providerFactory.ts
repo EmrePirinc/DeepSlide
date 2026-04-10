@@ -6,6 +6,7 @@ import type { SpeechProviderInterface } from './types';
 import { WebSpeechAdapter } from './providers/webSpeechAdapter';
 import { GeminiSpeechAdapter } from './providers/geminiSpeechAdapter';
 import { WhisperAdapter } from './providers/whisperAdapter';
+import { DeepgramAdapter } from './providers/deepgramAdapter';
 
 export function createSpeechProvider(
   type: SpeechProviderType
@@ -17,6 +18,8 @@ export function createSpeechProvider(
       return new GeminiSpeechAdapter();
     case 'whisper':
       return new WhisperAdapter();
+    case 'deepgram':
+      return new DeepgramAdapter();
     default:
       return new WebSpeechAdapter();
   }

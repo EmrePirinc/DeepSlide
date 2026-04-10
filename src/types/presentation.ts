@@ -68,7 +68,7 @@ export interface PresentationSettings {
 }
 
 export type AIProviderType = 'gemini' | 'qwen' | 'gemma';
-export type SpeechProviderType = 'webSpeech' | 'gemini' | 'whisper';
+export type SpeechProviderType = 'webSpeech' | 'gemini' | 'whisper' | 'deepgram';
 
 export const DEFAULT_SETTINGS: PresentationSettings = {
   columnCount: 4,

@@ -9,6 +9,14 @@ const OLLAMA_URL = process.env.OLLAMA_URL ?? 'http://localhost:11434';
 const OLLAMA_MODEL = process.env.QWEN_MODEL ?? 'qwen3.5:9b';
 
 export async function POST(request: NextRequest) {
+  const isLocalhost = OLLAMA_URL.includes('localhost') || OLLAMA_URL.includes('127.0.0.1');
+  if (isLocalhost && process.env.VERCEL) {
+    return NextResponse.json(
+      { error: 'Qwen yerel Ollama sunucusunda çalışır. Vercel ortamında kullanılamaz. Lütfen Gemini seçin.' },
+      { status: 503 }
+    );
+  }
+
   try {
     const { imageBase64, mimeType, language, keywordCount } = await request.json();
     if (!imageBase64 || !mimeType) {
