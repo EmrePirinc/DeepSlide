@@ -177,13 +177,13 @@ export interface CanvasSlide {
 // ─── Varsayılan Değerler ───────────────────────────────
 
 export const DEFAULT_FILL: FillStyle = {
-  type: 'solid',
+  type: 'none',
   color: '#6366F1',
 };
 
 export const DEFAULT_STROKE: StrokeStyle = {
   color: '#FFFFFF',
-  width: 0,
+  width: 2,
   style: 'solid',
 };
 
