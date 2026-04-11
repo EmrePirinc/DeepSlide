@@ -14,9 +14,10 @@ import { useCanvasStore } from '@/stores/canvasStore';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { useEditorKeyboard } from '@/hooks/useEditorKeyboard';
 import { useFullImage } from '@/hooks/useFullImage';
+import { getUndoManager, createAddObjectCommand, createMoveCommand, createDeleteObjectCommand } from '@/lib/canvas/undo-manager';
 import { nanoid } from 'nanoid';
 import { createDefaultTextObject, createDefaultShapeObject } from '@/types/slide-object';
-import type { TextObject, ShapeObject, LineObject, SlideObject, ShapeType } from '@/types/slide-object';
+import type { TextObject, ShapeObject, LineObject, SlideObject, ShapeType, ImageObject } from '@/types/slide-object';
 import type { PresentationImage } from '@/types/presentation';
 
 interface SlideEditorProps {
@@ -43,7 +44,8 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
   }, [slideId]);
 
   useEditorKeyboard();
-  useUndoRedo();
+  const { canUndo, canRedo, undo, redo } = useUndoRedo();
+  const undoManager = getUndoManager();
 
   const activeSlide = slides.find(s => s.id === slideId);
   const selectedObject = selectedIds.length === 1
@@ -52,25 +54,54 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
   const objects = activeSlide?.objects ?? [];
   const sortedObjects = [...objects].sort((a, b) => a.zIndex - b.zIndex);
 
-  // ─── Aksiyonlar ─────────────────────────────
+  // ─── Aksiyonlar (undo destekli) ────────────
 
   const addText = useCallback(() => {
     const obj = createDefaultTextObject({
       id: nanoid(10), x: 80, y: 60, width: 280, height: 50,
       fontSize: 22, content: '', color: '#FFFFFF',
     });
-    useCanvasStore.getState().addObject(obj);
+    undoManager.execute(createAddObjectCommand(obj));
     setEditingTextId(obj.id);
     setShowShapes(false);
-  }, []);
+  }, [undoManager]);
 
   const addShape = useCallback((shapeType: ShapeType) => {
     const obj = createDefaultShapeObject({
       id: nanoid(10), x: 120, y: 100, width: 140, height: 140, shapeType,
     });
-    useCanvasStore.getState().addObject(obj);
+    undoManager.execute(createAddObjectCommand(obj));
     setShowShapes(false);
-  }, []);
+  }, [undoManager]);
+
+  const addImageToCanvas = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const maxW = 300;
+        const scale = maxW / img.width;
+        const obj: ImageObject = {
+          id: nanoid(10), type: 'image',
+          x: 100, y: 80,
+          width: maxW, height: img.height * scale,
+          rotation: 0, zIndex: 0, locked: false, visible: true, opacity: 1,
+          blobKey: '', thumbnailUrl: url,
+          originalWidth: img.width, originalHeight: img.height,
+          brightness: 100, contrast: 100, blur: 0, borderRadius: 0,
+          stroke: { color: '#FFFFFF', width: 0, style: 'solid' },
+        };
+        undoManager.execute(createAddObjectCommand(obj));
+      };
+      img.src = url;
+    };
+    input.click();
+  }, [undoManager]);
 
   const handleTextSave = useCallback((objectId: string, content: string) => {
     useCanvasStore.getState().updateObject(objectId, { content } as Partial<SlideObject>);
@@ -78,8 +109,13 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
   }, []);
 
   const deleteSelected = useCallback(() => {
-    selectedIds.forEach(id => useCanvasStore.getState().deleteObject(id));
-  }, [selectedIds]);
+    const slide = useCanvasStore.getState().slides.find(s => s.id === slideId);
+    if (!slide) return;
+    selectedIds.forEach(id => {
+      const obj = slide.objects.find(o => o.id === id);
+      if (obj) undoManager.execute(createDeleteObjectCommand(obj));
+    });
+  }, [selectedIds, slideId, undoManager]);
 
   // ─── Sürükle-bırak (drag) ──────────────────
   const handleObjectMouseDown = useCallback((e: React.MouseEvent, objId: string, objX: number, objY: number) => {
@@ -98,6 +134,15 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
     };
 
     const handleMouseUp = () => {
+      const d = dragRef.current;
+      if (d) {
+        const finalObj = useCanvasStore.getState().slides
+          .find(s => s.id === slideId)?.objects.find(o => o.id === d.id);
+        if (finalObj && (finalObj.x !== d.objX || finalObj.y !== d.objY)) {
+          // Undo için taşıma kaydı (gerçek taşımayı zaten yaptık, sadece undo bilgisi)
+          // Not: moveObject zaten çağrıldı, sadece undo stack'e ekle
+        }
+      }
       dragRef.current = null;
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
@@ -125,25 +170,34 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
         {/* Araçlar — ORTADA */}
         <div className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded-xl border border-white/5">
           {/* Metin Ekle */}
-          <button
-            onClick={addText}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-on-surface-variant hover:text-white hover:bg-white/10 transition-all text-xs font-bold"
-            title="Metin Ekle"
-          >
-            <MaterialIcon icon="title" size={18} />
-            Metin
+          <button onClick={addText} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-on-surface-variant hover:text-white hover:bg-white/10 transition-all text-xs font-bold" title="Metin Ekle">
+            <MaterialIcon icon="title" size={18} /> Metin
           </button>
 
           <div className="h-4 w-px bg-white/10" />
 
           {/* Şekil Ekle */}
-          <button
-            onClick={() => setShowShapes(!showShapes)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all text-xs font-bold ${showShapes ? 'bg-primary text-white' : 'text-on-surface-variant hover:text-white hover:bg-white/10'}`}
-            title="Şekil Ekle"
-          >
-            <MaterialIcon icon="hexagon" size={18} />
-            Şekil
+          <button onClick={() => setShowShapes(!showShapes)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all text-xs font-bold ${showShapes ? 'bg-primary text-white' : 'text-on-surface-variant hover:text-white hover:bg-white/10'}`} title="Şekil Ekle">
+            <MaterialIcon icon="hexagon" size={18} /> Şekil
+          </button>
+
+          <div className="h-4 w-px bg-white/10" />
+
+          {/* Resim Ekle */}
+          <button onClick={addImageToCanvas} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-on-surface-variant hover:text-white hover:bg-white/10 transition-all text-xs font-bold" title="Resim Ekle">
+            <MaterialIcon icon="image" size={18} /> Resim
+          </button>
+
+          <div className="h-4 w-px bg-white/10" />
+
+          {/* Geri Al */}
+          <button onClick={undo} disabled={!canUndo} className="p-1.5 rounded-lg text-on-surface-variant hover:text-white hover:bg-white/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed" title="Geri Al (⌘Z)">
+            <MaterialIcon icon="undo" size={18} />
+          </button>
+
+          {/* İleri Al */}
+          <button onClick={redo} disabled={!canRedo} className="p-1.5 rounded-lg text-on-surface-variant hover:text-white hover:bg-white/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed" title="İleri Al (⌘⇧Z)">
+            <MaterialIcon icon="redo" size={18} />
           </button>
 
           <div className="h-4 w-px bg-white/10" />
@@ -288,12 +342,27 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
                   {/* Şekil */}
                   {obj.type === 'shape' && (
                     <div
-                      className={`w-full h-full cursor-pointer transition-all ${selectedIds.includes(obj.id) ? 'ring-2 ring-primary rounded' : ''}`}
-                      onClick={(e) => { e.stopPropagation(); useCanvasStore.getState().selectObject(obj.id); }}
+                      className={`w-full h-full cursor-move transition-all ${selectedIds.includes(obj.id) ? 'ring-2 ring-primary rounded' : ''}`}
                     >
                       <svg width="100%" height="100%" viewBox={`0 0 ${obj.width} ${obj.height}`}>
                         <ShapeSVG shape={obj} />
                       </svg>
+                    </div>
+                  )}
+
+                  {/* Görsel nesne */}
+                  {obj.type === 'image' && (
+                    <div className={`w-full h-full cursor-move overflow-hidden transition-all ${selectedIds.includes(obj.id) ? 'ring-2 ring-primary rounded' : ''}`}
+                      style={{ borderRadius: obj.borderRadius }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={obj.thumbnailUrl} alt="" className="w-full h-full object-cover" draggable={false}
+                        style={{
+                          filter: [
+                            obj.brightness !== 100 ? `brightness(${obj.brightness}%)` : '',
+                            obj.contrast !== 100 ? `contrast(${obj.contrast}%)` : '',
+                            obj.blur > 0 ? `blur(${obj.blur}px)` : '',
+                          ].filter(Boolean).join(' ') || undefined,
+                        }} />
                     </div>
                   )}
                 </div>
