@@ -109,23 +109,45 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
     setEditingTextId(null);
   }, []);
 
-  // ─── Drag: move + resize + rotate ──────────
+  // ─── Nesne tıklama = seç ─────────────────
+  const handleObjectClick = useCallback((e: React.MouseEvent, objId: string) => {
+    e.stopPropagation();
+    useCanvasStore.getState().selectObject(objId);
+  }, []);
+
+  // ─── Drag: move + resize + rotate (mouseDown ile) ──────────
   const startDrag = useCallback((e: React.MouseEvent, objId: string, mode: DragMode) => {
     if (editingTextId === objId && mode === 'move') return;
     e.stopPropagation(); e.preventDefault();
+    // Seçimi hemen yap
     useCanvasStore.getState().selectObject(objId);
     const obj = activeSlide?.objects.find(o => o.id === objId);
     if (!obj) return;
-    dragRef.current = { mode, id: objId, startX: e.clientX, startY: e.clientY, objX: obj.x, objY: obj.y, objW: obj.width, objH: obj.height, objR: obj.rotation };
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let isDragging = false;
+    const THRESHOLD = 3; // 3px hareket eşiği
 
     const onMove = (ev: MouseEvent) => {
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+
+      // Eşiği aşana kadar drag başlatma
+      if (!isDragging && Math.abs(dx) < THRESHOLD && Math.abs(dy) < THRESHOLD) return;
+
+      if (!isDragging) {
+        isDragging = true;
+        dragRef.current = { mode, id: objId, startX, startY, objX: obj.x, objY: obj.y, objW: obj.width, objH: obj.height, objR: obj.rotation };
+      }
+
       const d = dragRef.current; if (!d) return;
-      const dx = (ev.clientX - d.startX) / zoom;
-      const dy = (ev.clientY - d.startY) / zoom;
+      const ddx = (ev.clientX - d.startX) / zoom;
+      const ddy = (ev.clientY - d.startY) / zoom;
       const store = useCanvasStore.getState();
 
       if (d.mode === 'move') {
-        store.moveObject(d.id, d.objX + dx, d.objY + dy);
+        store.moveObject(d.id, d.objX + ddx, d.objY + ddy);
       } else if (d.mode === 'rotate') {
         const rect = canvasRef.current?.getBoundingClientRect();
         if (!rect) return;
@@ -136,18 +158,21 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
         if (ev.shiftKey) angle = Math.round(angle / 15) * 15;
         store.rotateObject(d.id, angle);
       } else {
-        // Resize
         let newW = d.objW, newH = d.objH, newX = d.objX, newY = d.objY;
-        if (d.mode.includes('e')) newW = Math.max(30, d.objW + dx);
-        if (d.mode.includes('s')) newH = Math.max(30, d.objH + dy);
-        if (d.mode.includes('w')) { newW = Math.max(30, d.objW - dx); newX = d.objX + dx; }
-        if (d.mode.includes('n')) { newH = Math.max(30, d.objH - dy); newY = d.objY + dy; }
+        if (d.mode.includes('e')) newW = Math.max(30, d.objW + ddx);
+        if (d.mode.includes('s')) newH = Math.max(30, d.objH + ddy);
+        if (d.mode.includes('w')) { newW = Math.max(30, d.objW - ddx); newX = d.objX + ddx; }
+        if (d.mode.includes('n')) { newH = Math.max(30, d.objH - ddy); newY = d.objY + ddy; }
         if (ev.shiftKey && d.objW > 0) { const ratio = d.objW / d.objH; newH = newW / ratio; }
         store.moveObject(d.id, newX, newY);
         store.resizeObject(d.id, newW, newH);
       }
     };
-    const onUp = () => { dragRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }, [editingTextId, zoom, activeSlide]);
