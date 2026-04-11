@@ -2,9 +2,8 @@
 // Copyright (c) 2026 Emre Pirinc. All rights reserved.
 // Licensed under the Business Source License 1.1
 
-
 import React from 'react';
-import { Card } from '@/components/ui/card';
+import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { KeywordBadge } from '@/components/keywords/KeywordBadge';
 import type { PresentationImage } from '@/types/presentation';
 
@@ -22,53 +21,72 @@ export const ImageCard = React.memo(function ImageCard({
   onClick,
 }: ImageCardProps) {
   return (
-    <Card
+    <div
       className={`
-        overflow-hidden cursor-pointer transition-all
-        ${isActive ? 'ring-2 ring-primary shadow-lg' : 'hover:ring-1 hover:ring-primary/50'}
+        glass-card rounded-[2rem] overflow-hidden cursor-pointer
+        border transition-all duration-500 group
+        premium-shadow
+        hover:-translate-y-3
+        ${isActive
+          ? 'border-primary/30 slide-thumb-active'
+          : 'border-white/5 hover:border-primary/40'}
       `}
       onClick={onClick}
     >
-      <div className="relative aspect-square">
+      {/* Image */}
+      <div className="relative aspect-[4/3] overflow-hidden">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={image.thumbnailDataUrl}
           alt={image.fileName}
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000"
           loading="lazy"
         />
 
+        {/* Gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+        {/* Status badge — top right */}
         {image.analysisStatus === 'analyzing' && image.keywords.length === 0 && (
-          <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+          <div className="absolute top-5 right-5 p-2.5 bg-black/60 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10">
+            <MaterialIcon icon="hourglass_empty" size={18} className="text-amber-400 animate-pulse" />
           </div>
         )}
 
         {image.analysisStatus === 'failed' && (
-          <div className="absolute top-1 right-1 bg-destructive text-white text-xs rounded px-1.5 py-0.5">
-            Hata
+          <div className="absolute top-5 right-5 p-2.5 bg-black/60 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10">
+            <MaterialIcon icon="error" size={18} className="text-rose-400" />
           </div>
         )}
 
         {image.analysisStatus === 'completed' && image.keywords.length > 0 && (
-          <div className="absolute top-1 right-1 bg-green-600 text-white text-[10px] rounded-full w-5 h-5 flex items-center justify-center">
-            {image.keywords.length}
+          <div className="absolute top-5 right-5 p-2.5 bg-black/60 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/10">
+            <MaterialIcon icon="verified" size={18} className="text-emerald-400" />
           </div>
         )}
       </div>
 
-      {showKeywords && image.keywords.length > 0 && (
-        <div className="p-1.5 flex flex-wrap gap-0.5">
-          {image.keywords.slice(0, 4).map((kw) => (
-            <KeywordBadge key={kw.id} keyword={kw} />
-          ))}
-          {image.keywords.length > 4 && (
-            <span className="text-[10px] text-muted-foreground self-center">
-              +{image.keywords.length - 4}
-            </span>
-          )}
-        </div>
-      )}
-    </Card>
+      {/* Content */}
+      <div className="p-8 space-y-5">
+        {/* Keyword chips */}
+        {showKeywords && image.keywords.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {image.keywords.slice(0, 3).map((kw) => (
+              <KeywordBadge key={kw.id} keyword={kw} />
+            ))}
+            {image.keywords.length > 3 && (
+              <span className="px-3 py-1 rounded-full text-[10px] font-extrabold text-on-surface-variant bg-white/5 uppercase tracking-widest">
+                +{image.keywords.length - 3}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Description */}
+        <p className="text-[15px] text-on-surface-variant leading-relaxed font-medium line-clamp-2">
+          {image.fileName}
+        </p>
+      </div>
+    </div>
   );
 });

@@ -9,6 +9,17 @@ export interface Presentation {
   settings: PresentationSettings;
   createdAt: number;
   updatedAt: number;
+  folderId?: string | null;
+}
+
+export interface TextOverlay {
+  id: string;
+  text: string;
+  x: number;       // 0–100 (percent of image width)
+  y: number;       // 0–100 (percent of image height)
+  fontSize: number;
+  color: string;
+  bold: boolean;
 }
 
 export interface PresentationImage {
@@ -25,6 +36,7 @@ export interface PresentationImage {
   analysisStatus: AnalysisStatus;
   analysisError?: string;
   createdAt: number;
+  textOverlays?: TextOverlay[];
 }
 
 export type AnalysisStatus = 'pending' | 'analyzing' | 'completed' | 'failed';
@@ -48,8 +60,10 @@ export type KeywordCategory =
 
 export type AnalysisLanguage = 'tr' | 'en' | 'de' | 'fr';
 
-export type TransitionType = 'zoom' | 'fade' | 'pan';
-export type ThemeId = 'dark' | 'light' | 'corporate';
+import type { TransitionType as ExtTransitionType } from '@/lib/animation/transitions/types';
+import type { ThemeId as ExtThemeId } from '@/lib/themes/types';
+export type TransitionType = ExtTransitionType;
+export type ThemeId = ExtThemeId;
 
 export interface PresentationSettings {
   columnCount: 3 | 4 | 5;
@@ -65,9 +79,12 @@ export interface PresentationSettings {
   transitionType: TransitionType;
   selectedTheme: ThemeId;
   overviewReturnTimeout: number;
+  // Privacy Shield (Faz 2)
+  passwordProtected?: boolean;
+  sharePassword?: string;
 }
 
-export type AIProviderType = 'gemini' | 'qwen' | 'gemma';
+export type AIProviderType = 'gemini' | 'ollama';
 export type SpeechProviderType = 'webSpeech' | 'gemini' | 'whisper' | 'deepgram';
 
 export const DEFAULT_SETTINGS: PresentationSettings = {

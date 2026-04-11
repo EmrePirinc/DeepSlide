@@ -3,7 +3,19 @@
 
 import type { Variants } from 'motion/react';
 
-export type TransitionType = 'zoom' | 'fade' | 'pan';
+export type TransitionType =
+  | 'zoom'
+  | 'fade'
+  | 'pan'
+  | 'fadeBlack'
+  | 'slideRight'
+  | 'slideLeft'
+  | 'flip'
+  | 'cube'
+  | 'gallery'
+  | 'none';
+
+export type TransitionSpeed = 'slow' | 'medium' | 'fast';
 
 export interface TransitionProvider {
   name: string;
@@ -11,3 +23,9 @@ export interface TransitionProvider {
   enter: Variants;
   exit: Variants;
 }
+
+export const SPEED_DURATIONS: Record<TransitionSpeed, number> = {
+  slow: 1.5,
+  medium: 1.0,
+  fast: 0.5,
+};

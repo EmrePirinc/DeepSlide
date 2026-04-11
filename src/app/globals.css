@@ -7,9 +7,9 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-sans);
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
+  --font-heading: var(--font-inter);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -39,82 +39,125 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+
+  /* Cinematic Canvas — Radius Scale */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.25rem;
+  --radius-3xl: 1.5rem;
+  --radius-4xl: 1.75rem;
+
+  /* Extended surface colors for tonal layering */
+  --color-surface: var(--surface);
+  --color-surface-variant: var(--surface-variant);
+  --color-on-surface: var(--on-surface);
+  --color-on-surface-variant: var(--on-surface-variant);
+  --color-primary-container: var(--primary-container);
+  --color-outline-variant: var(--outline-variant);
+  --color-surface-bright: var(--surface-bright);
 }
+
+/*
+ * ═══════════════════════════════════════════
+ *  Cinematic Canvas — "The Intelligent Auteur"
+ *  Deep cosmic slates + Indigo laser accent
+ * ═══════════════════════════════════════════
+ */
 
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  /* Core palette — dark-first, cosmic slate */
+  --background: #070D1F;
+  --foreground: #F8FAFC;
+  --card: rgba(255, 255, 255, 0.03);
+  --card-foreground: #F8FAFC;
+  --popover: #191F31;
+  --popover-foreground: #F8FAFC;
+  --primary: #6366F1;
+  --primary-foreground: #FFFFFF;
+  --secondary: #C3C0FF;
+  --secondary-foreground: #070D1F;
+  --muted: #191F31;
+  --muted-foreground: #94A3B8;
+  --accent: #23293C;
+  --accent-foreground: #F8FAFC;
+  --destructive: #F43F5E;
+  --border: rgba(255, 255, 255, 0.05);
+  --input: rgba(255, 255, 255, 0.05);
+  --ring: #6366F1;
+  --radius: 0.5rem;
+
+  /* Surface hierarchy (obsidian layering) */
+  --surface: #0C1324;
+  --surface-variant: #191F31;
+  --surface-bright: #33394C;
+  --on-surface: #F8FAFC;
+  --on-surface-variant: #94A3B8;
+  --primary-container: #4F46E5;
+  --outline-variant: rgba(144, 143, 160, 0.15);
+
+  /* Chart colors — indigo spectrum */
+  --chart-1: #818CF8;
+  --chart-2: #6366F1;
+  --chart-3: #4F46E5;
+  --chart-4: #4338CA;
+  --chart-5: #3730A3;
+
+  /* Sidebar */
+  --sidebar: #0C1324;
+  --sidebar-foreground: #F8FAFC;
+  --sidebar-primary: #6366F1;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #191F31;
+  --sidebar-accent-foreground: #F8FAFC;
+  --sidebar-border: rgba(255, 255, 255, 0.05);
+  --sidebar-ring: #6366F1;
 }
 
+/* Dark mode mirrors root (dark-first design) */
 .dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.205 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.556 0 0);
+  --background: #070D1F;
+  --foreground: #F8FAFC;
+  --card: rgba(255, 255, 255, 0.03);
+  --card-foreground: #F8FAFC;
+  --popover: #191F31;
+  --popover-foreground: #F8FAFC;
+  --primary: #6366F1;
+  --primary-foreground: #FFFFFF;
+  --secondary: #C3C0FF;
+  --secondary-foreground: #070D1F;
+  --muted: #191F31;
+  --muted-foreground: #94A3B8;
+  --accent: #23293C;
+  --accent-foreground: #F8FAFC;
+  --destructive: #F43F5E;
+  --border: rgba(255, 255, 255, 0.05);
+  --input: rgba(255, 255, 255, 0.05);
+  --ring: #6366F1;
+
+  --surface: #0C1324;
+  --surface-variant: #191F31;
+  --surface-bright: #33394C;
+  --on-surface: #F8FAFC;
+  --on-surface-variant: #94A3B8;
+  --primary-container: #4F46E5;
+  --outline-variant: rgba(144, 143, 160, 0.15);
+
+  --chart-1: #818CF8;
+  --chart-2: #6366F1;
+  --chart-3: #4F46E5;
+  --chart-4: #4338CA;
+  --chart-5: #3730A3;
+
+  --sidebar: #0C1324;
+  --sidebar-foreground: #F8FAFC;
+  --sidebar-primary: #6366F1;
+  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-accent: #191F31;
+  --sidebar-accent-foreground: #F8FAFC;
+  --sidebar-border: rgba(255, 255, 255, 0.05);
+  --sidebar-ring: #6366F1;
 }
 
 @layer base {
@@ -127,4 +170,107 @@
   html {
     @apply font-sans;
   }
+}
+
+/*
+ * ═══════════════════════════════════════════
+ *  Glassmorphism Utility Classes
+ * ═══════════════════════════════════════════
+ */
+
+.glass-panel {
+  backdrop-filter: blur(32px);
+  -webkit-backdrop-filter: blur(32px);
+  background: rgba(12, 19, 36, 0.7);
+}
+
+.glass-card {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+/*
+ * ═══════════════════════════════════════════
+ *  Elevation & Shadow Classes
+ * ═══════════════════════════════════════════
+ */
+
+.slide-thumb-active {
+  box-shadow: 0 0 0 3px #6366F1, 0 20px 40px -10px rgba(99, 102, 241, 0.5);
+  transform: scale(1.02);
+}
+
+.premium-shadow {
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+}
+
+.ambient-shadow {
+  box-shadow: 0px 20px 40px rgba(7, 13, 31, 0.5);
+}
+
+.primary-glow {
+  box-shadow: 0 0 15px #6366F1;
+}
+
+/*
+ * ═══════════════════════════════════════════
+ *  Custom Scrollbar (Thin, Invisible Track)
+ * ═══════════════════════════════════════════
+ */
+
+::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.1);
+  border-radius: 10px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.25);
+}
+
+/*
+ * ═══════════════════════════════════════════
+ *  Material Symbols Base Configuration
+ * ═══════════════════════════════════════════
+ */
+
+.material-symbols-outlined {
+  font-variation-settings:
+    'FILL' 0,
+    'wght' 400,
+    'GRAD' 0,
+    'opsz' 24;
+  user-select: none;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+/*
+ * ═══════════════════════════════════════════
+ *  Cinematic Canvas — Transition Easing
+ * ═══════════════════════════════════════════
+ */
+
+.ease-expo {
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/*
+ * ═══════════════════════════════════════════
+ *  Canvas Dot Grid Background
+ * ═══════════════════════════════════════════
+ */
+
+.canvas-container {
+  background-image: radial-gradient(rgba(99, 102, 241, 0.05) 1px, transparent 1px);
+  background-size: 32px 32px;
 }

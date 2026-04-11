@@ -2,18 +2,18 @@
 // Copyright (c) 2026 Emre Pirinc. All rights reserved.
 // Licensed under the Business Source License 1.1
 
-
-import { Badge } from '@/components/ui/badge';
 import type { Keyword, KeywordCategory } from '@/types/presentation';
 
 const CATEGORY_COLORS: Record<KeywordCategory, string> = {
-  object: 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200',
-  concept: 'bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200',
-  color: 'bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200',
-  action: 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200',
-  emotion: 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200',
-  text: 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200',
+  object: 'bg-blue-500/15 text-blue-300 border-blue-500/20',
+  concept: 'bg-violet-500/15 text-violet-300 border-violet-500/20',
+  color: 'bg-pink-500/15 text-pink-300 border-pink-500/20',
+  action: 'bg-amber-500/15 text-amber-300 border-amber-500/20',
+  emotion: 'bg-rose-500/15 text-rose-300 border-rose-500/20',
+  text: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/20',
 };
+
+const DEFAULT_COLOR = 'bg-primary/10 text-primary border-primary/20';
 
 interface KeywordBadgeProps {
   keyword: Keyword;
@@ -24,24 +24,25 @@ interface KeywordBadgeProps {
 export function KeywordBadge({ keyword, onClick, isMatched }: KeywordBadgeProps) {
   const colorClass = keyword.category
     ? CATEGORY_COLORS[keyword.category]
-    : 'bg-gray-100 text-gray-800';
+    : DEFAULT_COLOR;
 
   return (
-    <Badge
-      variant="outline"
+    <span
       className={`
-        text-xs cursor-pointer transition-all
+        inline-flex items-center px-3.5 py-1.5 rounded-full
+        text-[10px] font-black uppercase tracking-[0.15em]
+        border cursor-pointer transition-all duration-300
         ${colorClass}
-        ${isMatched ? 'ring-2 ring-primary scale-110' : ''}
+        ${isMatched ? 'ring-2 ring-primary scale-110 shadow-lg shadow-primary/20' : ''}
         ${keyword.isUserEdited ? 'border-dashed' : ''}
       `}
-      style={{ opacity: 0.5 + keyword.confidence * 0.5 }}
+      style={{ opacity: 0.6 + keyword.confidence * 0.4 }}
       onClick={onClick}
     >
       {keyword.text}
       {keyword.synonyms.length > 0 && (
-        <span className="ml-1 opacity-60">+{keyword.synonyms.length}</span>
+        <span className="ml-1.5 opacity-50">+{keyword.synonyms.length}</span>
       )}
-    </Badge>
+    </span>
   );
 }
