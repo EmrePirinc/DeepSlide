@@ -3,43 +3,55 @@
 
 'use client';
 
-import { useEffect, useCallback, useSyncExternalStore } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import { getUndoManager } from '@/lib/canvas/undo-manager';
 import type { CanvasCommand } from '@/lib/canvas/undo-manager';
+
+interface UndoRedoState {
+  canUndo: boolean;
+  canRedo: boolean;
+  undoCount: number;
+  redoCount: number;
+  lastUndoDescription: string | null;
+  lastRedoDescription: string | null;
+}
 
 /**
  * useUndoRedo — Canvas düzenleme geçmişi hook'u.
  * ⌘Z ile geri al, ⌘⇧Z ile yeniden yap.
- * Toolbar butonları için canUndo/canRedo state'i sağlar.
  */
 export function useUndoRedo() {
-  const manager = getUndoManager();
+  const managerRef = useRef(getUndoManager());
+  const manager = managerRef.current;
 
-  // Reactive state — manager değiştiğinde UI güncellenir
-  const state = useSyncExternalStore(
-    useCallback((cb: () => void) => manager.subscribe(cb), [manager]),
-    () => ({
-      canUndo: manager.canUndo,
-      canRedo: manager.canRedo,
-      undoCount: manager.undoCount,
-      redoCount: manager.redoCount,
-      lastUndoDescription: manager.lastUndoDescription,
-      lastRedoDescription: manager.lastRedoDescription,
-    }),
-    () => ({
-      canUndo: false,
-      canRedo: false,
-      undoCount: 0,
-      redoCount: 0,
-      lastUndoDescription: null,
-      lastRedoDescription: null,
-    })
-  );
+  const [state, setState] = useState<UndoRedoState>({
+    canUndo: false,
+    canRedo: false,
+    undoCount: 0,
+    redoCount: 0,
+    lastUndoDescription: null,
+    lastRedoDescription: null,
+  });
+
+  // Manager değişikliklerini dinle
+  useEffect(() => {
+    const update = () => {
+      setState({
+        canUndo: manager.canUndo,
+        canRedo: manager.canRedo,
+        undoCount: manager.undoCount,
+        redoCount: manager.redoCount,
+        lastUndoDescription: manager.lastUndoDescription,
+        lastRedoDescription: manager.lastRedoDescription,
+      });
+    };
+    const unsubscribe = manager.subscribe(update);
+    return unsubscribe;
+  }, [manager]);
 
   // Klavye kısayolları
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // contentEditable içindeyken kısayolları engelleme
       const target = e.target as HTMLElement;
       if (target.isContentEditable || target.tagName === 'INPUT' || target.tagName === 'TEXTAREA') {
         return;
@@ -55,7 +67,6 @@ export function useUndoRedo() {
         e.preventDefault();
         manager.redo();
       } else if (mod && e.key === 'y') {
-        // Windows: Ctrl+Y = Redo
         e.preventDefault();
         manager.redo();
       }
