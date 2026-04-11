@@ -32,6 +32,7 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [showShapes, setShowShapes] = useState(false);
   const [zoom, setZoom] = useState(1);
+  const dragRef = useRef<{ id: string; startX: number; startY: number; objX: number; objY: number } | null>(null);
 
   const fullImageUrl = useFullImage(image.blobKey);
   const imageSrc = fullImageUrl ?? image.thumbnailDataUrl;
@@ -79,6 +80,32 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
   const deleteSelected = useCallback(() => {
     selectedIds.forEach(id => useCanvasStore.getState().deleteObject(id));
   }, [selectedIds]);
+
+  // ─── Sürükle-bırak (drag) ──────────────────
+  const handleObjectMouseDown = useCallback((e: React.MouseEvent, objId: string, objX: number, objY: number) => {
+    if (editingTextId === objId) return; // Düzenleme modundaysa sürükleme
+    e.stopPropagation();
+    e.preventDefault();
+    useCanvasStore.getState().selectObject(objId);
+    dragRef.current = { id: objId, startX: e.clientX, startY: e.clientY, objX, objY };
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const dx = (ev.clientX - d.startX) / zoom;
+      const dy = (ev.clientY - d.startY) / zoom;
+      useCanvasStore.getState().moveObject(d.id, d.objX + dx, d.objY + dy);
+    };
+
+    const handleMouseUp = () => {
+      dragRef.current = null;
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [editingTextId, zoom]);
 
   return (
     <motion.div
@@ -217,7 +244,9 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
                     height: obj.type !== 'line' ? obj.height : undefined,
                     transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
                     zIndex: obj.zIndex,
+                    cursor: editingTextId === obj.id ? 'text' : 'move',
                   }}
+                  onMouseDown={(e) => handleObjectMouseDown(e, obj.id, obj.x, obj.y)}
                 >
                   {/* Metin */}
                   {obj.type === 'text' && (
@@ -240,7 +269,7 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
                       >{obj.content}</div>
                     ) : (
                       <div
-                        className={`w-full h-full cursor-pointer rounded transition-all ${selectedIds.includes(obj.id) ? 'ring-2 ring-primary' : 'hover:ring-1 hover:ring-white/40'}`}
+                        className={`w-full h-full rounded transition-all ${selectedIds.includes(obj.id) ? 'ring-2 ring-primary cursor-move' : 'hover:ring-1 hover:ring-white/40 cursor-move'}`}
                         style={{
                           fontFamily: obj.fontFamily, fontSize: obj.fontSize, fontWeight: obj.fontWeight,
                           fontStyle: obj.fontStyle, color: obj.color, textAlign: obj.textAlign,
@@ -249,7 +278,6 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
                           backgroundColor: obj.content ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.08)',
                           whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                         }}
-                        onClick={(e) => { e.stopPropagation(); useCanvasStore.getState().selectObject(obj.id); }}
                         onDoubleClick={(e) => { e.stopPropagation(); setEditingTextId(obj.id); }}
                       >
                         {obj.content || <span className="opacity-40 italic">Çift tıkla yazın...</span>}
