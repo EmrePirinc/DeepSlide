@@ -8,13 +8,13 @@ import { motion } from 'motion/react';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { TextFormatToolbar } from './TextFormatToolbar';
 import { ShapeStylePanel } from './ShapeStylePanel';
-import { LineStylePanel } from './LineStylePanel';
+import { ColorPicker } from '@/components/ui/ColorPicker';
 import { SHAPE_DEFINITIONS } from '@/lib/canvas/shapes';
 import { useCanvasStore } from '@/stores/canvasStore';
 import { useUndoRedo } from '@/hooks/useUndoRedo';
 import { useEditorKeyboard } from '@/hooks/useEditorKeyboard';
 import { useFullImage } from '@/hooks/useFullImage';
-import { getUndoManager, createAddObjectCommand, createMoveCommand, createDeleteObjectCommand } from '@/lib/canvas/undo-manager';
+import { getUndoManager, createAddObjectCommand, createDeleteObjectCommand } from '@/lib/canvas/undo-manager';
 import { nanoid } from 'nanoid';
 import { createDefaultTextObject, createDefaultShapeObject } from '@/types/slide-object';
 import type { TextObject, ShapeObject, LineObject, SlideObject, ShapeType, ImageObject } from '@/types/slide-object';
@@ -26,6 +26,8 @@ interface SlideEditorProps {
   onClose: () => void;
 }
 
+type DragMode = 'move' | 'resize-se' | 'resize-e' | 'resize-s' | 'resize-nw' | 'resize-ne' | 'resize-sw' | 'resize-w' | 'resize-n' | 'rotate';
+
 export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const selectedIds = useCanvasStore(s => s.selectedIds);
@@ -33,66 +35,56 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [showShapes, setShowShapes] = useState(false);
   const [zoom, setZoom] = useState(1);
-  const dragRef = useRef<{ id: string; startX: number; startY: number; objX: number; objY: number } | null>(null);
+  const [rightPanel, setRightPanel] = useState<'none' | 'style'>('none');
+  const dragRef = useRef<{ mode: DragMode; id: string; startX: number; startY: number; objX: number; objY: number; objW: number; objH: number; objR: number } | null>(null);
 
   const fullImageUrl = useFullImage(image.blobKey);
   const imageSrc = fullImageUrl ?? image.thumbnailDataUrl;
 
-  // slideId'yi aktif slayt olarak ayarla
-  useEffect(() => {
-    useCanvasStore.getState().setActiveSlide(slideId);
-  }, [slideId]);
-
+  useEffect(() => { useCanvasStore.getState().setActiveSlide(slideId); }, [slideId]);
   useEditorKeyboard();
   const { canUndo, canRedo, undo, redo } = useUndoRedo();
   const undoManager = getUndoManager();
 
   const activeSlide = slides.find(s => s.id === slideId);
-  const selectedObject = selectedIds.length === 1
-    ? activeSlide?.objects.find(o => o.id === selectedIds[0])
-    : null;
+  const selectedObject = selectedIds.length === 1 ? activeSlide?.objects.find(o => o.id === selectedIds[0]) : null;
   const objects = activeSlide?.objects ?? [];
   const sortedObjects = [...objects].sort((a, b) => a.zIndex - b.zIndex);
 
-  // ─── Aksiyonlar (undo destekli) ────────────
+  // ─── Seçim değiştiğinde sağ panel aç ────────
+  useEffect(() => {
+    if (selectedObject) setRightPanel('style');
+    else setRightPanel('none');
+  }, [selectedObject?.id]);
 
+  // ─── Aksiyonlar ─────────────────────────────
   const addText = useCallback(() => {
-    const obj = createDefaultTextObject({
-      id: nanoid(10), x: 80, y: 60, width: 280, height: 50,
-      fontSize: 22, content: '', color: '#FFFFFF',
-    });
+    const obj = createDefaultTextObject({ id: nanoid(10), x: 80, y: 60, width: 280, height: 50, fontSize: 22, content: '', color: '#FFFFFF' });
     undoManager.execute(createAddObjectCommand(obj));
     setEditingTextId(obj.id);
     setShowShapes(false);
   }, [undoManager]);
 
   const addShape = useCallback((shapeType: ShapeType) => {
-    const obj = createDefaultShapeObject({
-      id: nanoid(10), x: 120, y: 100, width: 140, height: 140, shapeType,
-    });
+    const obj = createDefaultShapeObject({ id: nanoid(10), x: 120, y: 100, width: 140, height: 140, shapeType });
     undoManager.execute(createAddObjectCommand(obj));
     setShowShapes(false);
   }, [undoManager]);
 
-  const addImageToCanvas = useCallback(() => {
+  const addImage = useCallback(() => {
     const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = 'image/*';
-    input.onchange = async (e) => {
+    input.type = 'file'; input.accept = 'image/*';
+    input.onchange = (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       const url = URL.createObjectURL(file);
       const img = new Image();
       img.onload = () => {
-        const maxW = 300;
-        const scale = maxW / img.width;
+        const maxW = 300; const scale = maxW / img.width;
         const obj: ImageObject = {
-          id: nanoid(10), type: 'image',
-          x: 100, y: 80,
-          width: maxW, height: img.height * scale,
+          id: nanoid(10), type: 'image', x: 100, y: 80, width: maxW, height: img.height * scale,
           rotation: 0, zIndex: 0, locked: false, visible: true, opacity: 1,
-          blobKey: '', thumbnailUrl: url,
-          originalWidth: img.width, originalHeight: img.height,
+          blobKey: '', thumbnailUrl: url, originalWidth: img.width, originalHeight: img.height,
           brightness: 100, contrast: 100, blur: 0, borderRadius: 0,
           stroke: { color: '#FFFFFF', width: 0, style: 'solid' },
         };
@@ -103,11 +95,6 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
     input.click();
   }, [undoManager]);
 
-  const handleTextSave = useCallback((objectId: string, content: string) => {
-    useCanvasStore.getState().updateObject(objectId, { content } as Partial<SlideObject>);
-    setEditingTextId(null);
-  }, []);
-
   const deleteSelected = useCallback(() => {
     const slide = useCanvasStore.getState().slides.find(s => s.id === slideId);
     if (!slide) return;
@@ -117,147 +104,103 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
     });
   }, [selectedIds, slideId, undoManager]);
 
-  // ─── Sürükle-bırak (drag) ──────────────────
-  const handleObjectMouseDown = useCallback((e: React.MouseEvent, objId: string, objX: number, objY: number) => {
-    if (editingTextId === objId) return; // Düzenleme modundaysa sürükleme
-    e.stopPropagation();
-    e.preventDefault();
-    useCanvasStore.getState().selectObject(objId);
-    dragRef.current = { id: objId, startX: e.clientX, startY: e.clientY, objX, objY };
+  const handleTextSave = useCallback((objectId: string, content: string) => {
+    useCanvasStore.getState().updateObject(objectId, { content } as Partial<SlideObject>);
+    setEditingTextId(null);
+  }, []);
 
-    const handleMouseMove = (ev: MouseEvent) => {
-      const d = dragRef.current;
-      if (!d) return;
+  // ─── Drag: move + resize + rotate ──────────
+  const startDrag = useCallback((e: React.MouseEvent, objId: string, mode: DragMode) => {
+    if (editingTextId === objId && mode === 'move') return;
+    e.stopPropagation(); e.preventDefault();
+    useCanvasStore.getState().selectObject(objId);
+    const obj = activeSlide?.objects.find(o => o.id === objId);
+    if (!obj) return;
+    dragRef.current = { mode, id: objId, startX: e.clientX, startY: e.clientY, objX: obj.x, objY: obj.y, objW: obj.width, objH: obj.height, objR: obj.rotation };
+
+    const onMove = (ev: MouseEvent) => {
+      const d = dragRef.current; if (!d) return;
       const dx = (ev.clientX - d.startX) / zoom;
       const dy = (ev.clientY - d.startY) / zoom;
-      useCanvasStore.getState().moveObject(d.id, d.objX + dx, d.objY + dy);
-    };
+      const store = useCanvasStore.getState();
 
-    const handleMouseUp = () => {
-      const d = dragRef.current;
-      if (d) {
-        const finalObj = useCanvasStore.getState().slides
-          .find(s => s.id === slideId)?.objects.find(o => o.id === d.id);
-        if (finalObj && (finalObj.x !== d.objX || finalObj.y !== d.objY)) {
-          // Undo için taşıma kaydı (gerçek taşımayı zaten yaptık, sadece undo bilgisi)
-          // Not: moveObject zaten çağrıldı, sadece undo stack'e ekle
-        }
+      if (d.mode === 'move') {
+        store.moveObject(d.id, d.objX + dx, d.objY + dy);
+      } else if (d.mode === 'rotate') {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const cx = d.objX + d.objW / 2; const cy = d.objY + d.objH / 2;
+        const mx = (ev.clientX - rect.left) / zoom; const my = (ev.clientY - rect.top) / zoom;
+        let angle = Math.atan2(my - cy, mx - cx) * (180 / Math.PI) + 90;
+        if (angle < 0) angle += 360;
+        if (ev.shiftKey) angle = Math.round(angle / 15) * 15;
+        store.rotateObject(d.id, angle);
+      } else {
+        // Resize
+        let newW = d.objW, newH = d.objH, newX = d.objX, newY = d.objY;
+        if (d.mode.includes('e')) newW = Math.max(30, d.objW + dx);
+        if (d.mode.includes('s')) newH = Math.max(30, d.objH + dy);
+        if (d.mode.includes('w')) { newW = Math.max(30, d.objW - dx); newX = d.objX + dx; }
+        if (d.mode.includes('n')) { newH = Math.max(30, d.objH - dy); newY = d.objY + dy; }
+        if (ev.shiftKey && d.objW > 0) { const ratio = d.objW / d.objH; newH = newW / ratio; }
+        store.moveObject(d.id, newX, newY);
+        store.resizeObject(d.id, newW, newH);
       }
-      dragRef.current = null;
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
     };
+    const onUp = () => { dragRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  }, [editingTextId, zoom, activeSlide]);
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
-  }, [editingTextId, zoom]);
+  // ─── Nesne stili güncelle (kısayol) ─────────
+  const updateObj = useCallback((updates: Partial<SlideObject>) => {
+    if (selectedObject) useCanvasStore.getState().updateObject(selectedObject.id, updates);
+  }, [selectedObject]);
 
   return (
-    <motion.div
-      className="fixed inset-0 z-50 bg-background flex flex-col"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      transition={{ duration: 0.15 }}
-    >
+    <motion.div className="fixed inset-0 z-50 bg-background flex flex-col" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       {/* ═══ ÜST BAR ═══ */}
       <div className="flex items-center justify-between px-4 py-2 bg-surface/60 backdrop-blur-xl border-b border-white/5 shrink-0">
-        <button onClick={onClose} className="flex items-center gap-2 px-4 py-2 rounded-xl text-on-surface-variant hover:text-white hover:bg-white/5 transition-all text-sm font-bold">
-          <MaterialIcon icon="arrow_back" size={20} />
-          Kanvasa Dön
+        <button onClick={onClose} className="flex items-center gap-2 px-3 py-2 rounded-xl text-on-surface-variant hover:text-white hover:bg-white/5 transition-all text-sm font-bold">
+          <MaterialIcon icon="arrow_back" size={20} /> Kanvasa Dön
         </button>
-
-        {/* Araçlar — ORTADA */}
         <div className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded-xl border border-white/5">
-          {/* Metin Ekle */}
-          <button onClick={addText} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-on-surface-variant hover:text-white hover:bg-white/10 transition-all text-xs font-bold" title="Metin Ekle">
-            <MaterialIcon icon="title" size={18} /> Metin
-          </button>
-
+          <ToolBtn icon="title" label="Metin" onClick={addText} />
           <div className="h-4 w-px bg-white/10" />
-
-          {/* Şekil Ekle */}
-          <button onClick={() => setShowShapes(!showShapes)} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all text-xs font-bold ${showShapes ? 'bg-primary text-white' : 'text-on-surface-variant hover:text-white hover:bg-white/10'}`} title="Şekil Ekle">
-            <MaterialIcon icon="hexagon" size={18} /> Şekil
-          </button>
-
+          <ToolBtn icon="hexagon" label="Şekil" onClick={() => setShowShapes(!showShapes)} active={showShapes} />
           <div className="h-4 w-px bg-white/10" />
-
-          {/* Resim Ekle */}
-          <button onClick={addImageToCanvas} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-on-surface-variant hover:text-white hover:bg-white/10 transition-all text-xs font-bold" title="Resim Ekle">
-            <MaterialIcon icon="image" size={18} /> Resim
-          </button>
-
+          <ToolBtn icon="image" label="Resim" onClick={addImage} />
           <div className="h-4 w-px bg-white/10" />
-
-          {/* Geri Al */}
-          <button onClick={undo} disabled={!canUndo} className="p-1.5 rounded-lg text-on-surface-variant hover:text-white hover:bg-white/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed" title="Geri Al (⌘Z)">
-            <MaterialIcon icon="undo" size={18} />
-          </button>
-
-          {/* İleri Al */}
-          <button onClick={redo} disabled={!canRedo} className="p-1.5 rounded-lg text-on-surface-variant hover:text-white hover:bg-white/10 transition-all disabled:opacity-30 disabled:cursor-not-allowed" title="İleri Al (⌘⇧Z)">
-            <MaterialIcon icon="redo" size={18} />
-          </button>
-
-          <div className="h-4 w-px bg-white/10" />
-
-          {/* Sil */}
-          {selectedIds.length > 0 && (
-            <button onClick={deleteSelected} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition-all text-xs font-bold" title="Sil (Delete)">
-              <MaterialIcon icon="delete" size={18} />
-            </button>
-          )}
+          <button onClick={undo} disabled={!canUndo} className="p-1.5 rounded-lg text-on-surface-variant hover:text-white disabled:opacity-30 transition-all" title="Geri Al"><MaterialIcon icon="undo" size={18} /></button>
+          <button onClick={redo} disabled={!canRedo} className="p-1.5 rounded-lg text-on-surface-variant hover:text-white disabled:opacity-30 transition-all" title="İleri Al"><MaterialIcon icon="redo" size={18} /></button>
+          {selectedIds.length > 0 && (<><div className="h-4 w-px bg-white/10" /><button onClick={deleteSelected} className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition-all" title="Sil"><MaterialIcon icon="delete" size={18} /></button></>)}
         </div>
-
-        {/* Zoom kontrolleri */}
         <div className="flex items-center gap-2 bg-white/5 px-2 py-1 rounded-xl border border-white/5">
-          <button onClick={() => setZoom(z => Math.max(0.25, z - 0.1))} className="p-1 text-on-surface-variant hover:text-white rounded transition-colors">
-            <MaterialIcon icon="remove" size={16} />
-          </button>
+          <button onClick={() => setZoom(z => Math.max(0.25, z - 0.15))} className="p-1 text-on-surface-variant hover:text-white"><MaterialIcon icon="remove" size={16} /></button>
           <span className="text-[11px] font-black text-white w-10 text-center">{Math.round(zoom * 100)}%</span>
-          <button onClick={() => setZoom(z => Math.min(3, z + 0.1))} className="p-1 text-on-surface-variant hover:text-white rounded transition-colors">
-            <MaterialIcon icon="add" size={16} />
-          </button>
-          <button onClick={() => setZoom(1)} className="p-1 text-on-surface-variant hover:text-white rounded transition-colors text-[10px] font-bold">
-            Sığdır
-          </button>
+          <button onClick={() => setZoom(z => Math.min(3, z + 0.15))} className="p-1 text-on-surface-variant hover:text-white"><MaterialIcon icon="add" size={16} /></button>
+          <button onClick={() => setZoom(1)} className="px-2 py-0.5 text-[10px] font-bold text-on-surface-variant hover:text-white rounded">Sığdır</button>
         </div>
       </div>
 
-      {/* ═══ STİL TOOLBAR (seçime göre) ═══ */}
+      {/* ═══ METIN FORMAT TOOLBAR ═══ */}
       {selectedObject?.type === 'text' && !editingTextId && (
-        <div className="shrink-0">
-          <TextFormatToolbar textObject={selectedObject as TextObject} onUpdate={(u) => useCanvasStore.getState().updateObject(selectedObject.id, u)} />
-        </div>
-      )}
-      {selectedObject?.type === 'shape' && (
-        <div className="shrink-0">
-          <ShapeStylePanel shapeObject={selectedObject as ShapeObject} onUpdate={(u) => useCanvasStore.getState().updateObject(selectedObject.id, u)} />
-        </div>
+        <div className="shrink-0"><TextFormatToolbar textObject={selectedObject as TextObject} onUpdate={updateObj} /></div>
       )}
 
       {/* ═══ ANA ALAN ═══ */}
       <div className="flex-1 flex overflow-hidden">
-        {/* Şekil Galerisi — SOL PANEL (görselin üstüne binmez) */}
+        {/* Şekil Paneli — SOL */}
         {showShapes && (
-          <div className="w-56 bg-surface/40 border-r border-white/5 overflow-y-auto shrink-0 p-4">
-            <div className="flex items-center justify-between mb-3">
+          <div className="w-52 bg-surface/40 border-r border-white/5 overflow-y-auto shrink-0 p-3">
+            <div className="flex items-center justify-between mb-2">
               <h3 className="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.15em]">Şekiller</h3>
-              <button onClick={() => setShowShapes(false)} className="p-1 text-on-surface-variant hover:text-white rounded-lg hover:bg-white/5">
-                <MaterialIcon icon="close" size={16} />
-              </button>
+              <button onClick={() => setShowShapes(false)} className="p-1 text-on-surface-variant hover:text-white"><MaterialIcon icon="close" size={14} /></button>
             </div>
-            <div className="grid grid-cols-3 gap-2">
-              {SHAPE_DEFINITIONS.map(shape => (
-                <button
-                  key={shape.id}
-                  onClick={() => addShape(shape.id)}
-                  className="aspect-square flex items-center justify-center p-2 rounded-xl border border-white/5 hover:border-primary/40 hover:bg-white/5 transition-all group"
-                  title={shape.name}
-                >
-                  <svg viewBox="0 0 100 100" className="w-7 h-7 fill-on-surface-variant group-hover:fill-white transition-colors" stroke="none"
-                    dangerouslySetInnerHTML={{ __html: shape.svgContent }} />
+            <div className="grid grid-cols-4 gap-1.5">
+              {SHAPE_DEFINITIONS.map(s => (
+                <button key={s.id} onClick={() => addShape(s.id)} className="aspect-square flex items-center justify-center p-1.5 rounded-lg border border-white/5 hover:border-primary/40 hover:bg-white/5 transition-all group" title={s.name}>
+                  <svg viewBox="0 0 100 100" className="w-6 h-6 fill-on-surface-variant group-hover:fill-white" dangerouslySetInnerHTML={{ __html: s.svgContent }} />
                 </button>
               ))}
             </div>
@@ -265,117 +208,213 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
         )}
 
         {/* Canvas */}
-        <div className="flex-1 overflow-auto flex items-center justify-center p-6" style={{ backgroundColor: '#070D1F' }}>
-          <div
-            ref={canvasRef}
-            className="relative shadow-2xl rounded-xl overflow-visible transition-transform duration-200"
-            style={{ maxWidth: '85vw', maxHeight: '75vh', transform: `scale(${zoom})`, transformOrigin: 'center center' }}
-            onClick={() => {
-              if (!editingTextId) {
-                useCanvasStore.getState().deselectAll();
-                setEditingTextId(null);
-              }
-            }}
-          >
-            {/* Görsel */}
+        <div className="flex-1 overflow-auto flex items-center justify-center p-4" style={{ backgroundColor: '#070D1F' }}
+          onWheel={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); setZoom(z => Math.max(0.25, Math.min(3, z - e.deltaY * 0.001))); } }}>
+          <div ref={canvasRef} className="relative shadow-2xl rounded-xl transition-transform duration-100"
+            style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}
+            onClick={() => { if (!editingTextId) { useCanvasStore.getState().deselectAll(); setEditingTextId(null); } }}>
+            {/* Arka plan görsel */}
             {imageSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={imageSrc} alt={image.fileName} className="block max-w-full max-h-[75vh] object-contain select-none rounded-xl" draggable={false} />
+              <img src={imageSrc} alt={image.fileName} className="block max-w-[80vw] max-h-[72vh] object-contain select-none rounded-xl" draggable={false} />
             ) : (
-              <div className="w-[800px] h-[450px] bg-surface rounded-xl flex items-center justify-center">
-                <MaterialIcon icon="image" size={64} className="text-on-surface-variant/20" />
-              </div>
+              <div className="w-[800px] h-[450px] bg-surface rounded-xl flex items-center justify-center"><MaterialIcon icon="image" size={64} className="text-on-surface-variant/20" /></div>
             )}
 
             {/* ═══ NESNELER ═══ */}
             <div className="absolute inset-0 rounded-xl">
               {sortedObjects.map(obj => (
-                <div
-                  key={obj.id}
-                  style={{
-                    position: 'absolute', left: obj.x, top: obj.y,
-                    width: obj.type !== 'line' ? obj.width : undefined,
-                    height: obj.type !== 'line' ? obj.height : undefined,
-                    transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined,
-                    zIndex: obj.zIndex,
-                    cursor: editingTextId === obj.id ? 'text' : 'move',
-                  }}
-                  onMouseDown={(e) => handleObjectMouseDown(e, obj.id, obj.x, obj.y)}
-                >
+                <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y, width: obj.type !== 'line' ? obj.width : undefined, height: obj.type !== 'line' ? obj.height : undefined, transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined, zIndex: obj.zIndex, opacity: obj.opacity }}
+                  onMouseDown={(e) => startDrag(e, obj.id, 'move')}>
+
                   {/* Metin */}
-                  {obj.type === 'text' && (
-                    editingTextId === obj.id ? (
-                      <div
-                        contentEditable
-                        suppressContentEditableWarning
-                        autoFocus
-                        className="w-full h-full outline-none ring-2 ring-primary rounded"
-                        style={{
-                          fontFamily: obj.fontFamily, fontSize: obj.fontSize, fontWeight: obj.fontWeight,
-                          fontStyle: obj.fontStyle, color: obj.color, textAlign: obj.textAlign,
-                          lineHeight: obj.lineHeight, padding: 6,
-                          backgroundColor: 'rgba(0,0,0,0.4)', backdropFilter: 'blur(4px)',
-                          whiteSpace: 'pre-wrap', wordBreak: 'break-word', minHeight: 30, cursor: 'text',
-                        }}
-                        onBlur={(e) => handleTextSave(obj.id, e.currentTarget.innerText)}
-                        onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') handleTextSave(obj.id, e.currentTarget.innerText); }}
-                        onClick={(e) => e.stopPropagation()}
-                      >{obj.content}</div>
-                    ) : (
-                      <div
-                        className={`w-full h-full rounded transition-all ${selectedIds.includes(obj.id) ? 'ring-2 ring-primary cursor-move' : 'hover:ring-1 hover:ring-white/40 cursor-move'}`}
-                        style={{
-                          fontFamily: obj.fontFamily, fontSize: obj.fontSize, fontWeight: obj.fontWeight,
-                          fontStyle: obj.fontStyle, color: obj.color, textAlign: obj.textAlign,
-                          lineHeight: obj.lineHeight, padding: 6,
-                          textDecoration: obj.textDecoration !== 'none' ? obj.textDecoration : undefined,
-                          backgroundColor: obj.content ? 'rgba(0,0,0,0.2)' : 'rgba(255,255,255,0.08)',
-                          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                        }}
-                        onDoubleClick={(e) => { e.stopPropagation(); setEditingTextId(obj.id); }}
-                      >
-                        {obj.content || <span className="opacity-40 italic">Çift tıkla yazın...</span>}
-                      </div>
-                    )
-                  )}
+                  {obj.type === 'text' && (editingTextId === obj.id ? (
+                    <div contentEditable suppressContentEditableWarning autoFocus className="w-full h-full outline-none ring-2 ring-primary rounded"
+                      style={{ fontFamily: obj.fontFamily, fontSize: obj.fontSize, fontWeight: obj.fontWeight, fontStyle: obj.fontStyle, color: obj.color, textAlign: obj.textAlign, lineHeight: obj.lineHeight, padding: 6, backgroundColor: 'rgba(0,0,0,0.4)', whiteSpace: 'pre-wrap', wordBreak: 'break-word', cursor: 'text' }}
+                      onBlur={(e) => handleTextSave(obj.id, e.currentTarget.innerText)}
+                      onKeyDown={(e) => { e.stopPropagation(); if (e.key === 'Escape') handleTextSave(obj.id, e.currentTarget.innerText); }}
+                      onClick={(e) => e.stopPropagation()}>{obj.content}</div>
+                  ) : (
+                    <div className={`w-full h-full rounded cursor-move ${selectedIds.includes(obj.id) ? '' : 'hover:ring-1 hover:ring-white/30'}`}
+                      style={{ fontFamily: obj.fontFamily, fontSize: obj.fontSize, fontWeight: obj.fontWeight, fontStyle: obj.fontStyle, color: obj.color, textAlign: obj.textAlign, lineHeight: obj.lineHeight, padding: 6, textDecoration: obj.textDecoration !== 'none' ? obj.textDecoration : undefined, backgroundColor: obj.content ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.06)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}
+                      onDoubleClick={(e) => { e.stopPropagation(); setEditingTextId(obj.id); }}>
+                      {obj.content || <span className="opacity-30 italic">Çift tıkla yazın...</span>}
+                    </div>
+                  ))}
 
                   {/* Şekil */}
                   {obj.type === 'shape' && (
-                    <div
-                      className={`w-full h-full cursor-move transition-all ${selectedIds.includes(obj.id) ? 'ring-2 ring-primary rounded' : ''}`}
-                    >
-                      <svg width="100%" height="100%" viewBox={`0 0 ${obj.width} ${obj.height}`}>
-                        <ShapeSVG shape={obj} />
-                      </svg>
+                    <svg width="100%" height="100%" viewBox={`0 0 ${obj.width} ${obj.height}`} className="cursor-move">
+                      <ShapeSVG shape={obj} />
+                    </svg>
+                  )}
+
+                  {/* Resim */}
+                  {obj.type === 'image' && (
+                    <div className="w-full h-full overflow-hidden cursor-move" style={{ borderRadius: obj.borderRadius }}>
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={obj.thumbnailUrl} alt="" className="w-full h-full object-cover" draggable={false}
+                        style={{ filter: [obj.brightness !== 100 ? `brightness(${obj.brightness}%)` : '', obj.contrast !== 100 ? `contrast(${obj.contrast}%)` : '', obj.blur > 0 ? `blur(${obj.blur}px)` : ''].filter(Boolean).join(' ') || undefined }} />
                     </div>
                   )}
 
-                  {/* Görsel nesne */}
-                  {obj.type === 'image' && (
-                    <div className={`w-full h-full cursor-move overflow-hidden transition-all ${selectedIds.includes(obj.id) ? 'ring-2 ring-primary rounded' : ''}`}
-                      style={{ borderRadius: obj.borderRadius }}>
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={obj.thumbnailUrl} alt="" className="w-full h-full object-cover" draggable={false}
-                        style={{
-                          filter: [
-                            obj.brightness !== 100 ? `brightness(${obj.brightness}%)` : '',
-                            obj.contrast !== 100 ? `contrast(${obj.contrast}%)` : '',
-                            obj.blur > 0 ? `blur(${obj.blur}px)` : '',
-                          ].filter(Boolean).join(' ') || undefined,
-                        }} />
-                    </div>
+                  {/* ═══ SEÇİM TUTAMAKLARI ═══ */}
+                  {selectedIds.includes(obj.id) && obj.type !== 'line' && !editingTextId && (
+                    <>
+                      {/* Çerçeve */}
+                      <div className="absolute inset-0 border-2 border-primary rounded pointer-events-none" />
+                      {/* 8 Resize Handle */}
+                      <Handle pos="nw" x={-4} y={-4} onMouseDown={(e) => startDrag(e, obj.id, 'resize-nw')} />
+                      <Handle pos="n" x={obj.width / 2 - 4} y={-4} onMouseDown={(e) => startDrag(e, obj.id, 'resize-n')} />
+                      <Handle pos="ne" x={obj.width - 4} y={-4} onMouseDown={(e) => startDrag(e, obj.id, 'resize-ne')} />
+                      <Handle pos="e" x={obj.width - 4} y={obj.height / 2 - 4} onMouseDown={(e) => startDrag(e, obj.id, 'resize-e')} />
+                      <Handle pos="se" x={obj.width - 4} y={obj.height - 4} onMouseDown={(e) => startDrag(e, obj.id, 'resize-se')} />
+                      <Handle pos="s" x={obj.width / 2 - 4} y={obj.height - 4} onMouseDown={(e) => startDrag(e, obj.id, 'resize-s')} />
+                      <Handle pos="sw" x={-4} y={obj.height - 4} onMouseDown={(e) => startDrag(e, obj.id, 'resize-sw')} />
+                      <Handle pos="w" x={-4} y={obj.height / 2 - 4} onMouseDown={(e) => startDrag(e, obj.id, 'resize-w')} />
+                      {/* Döndürme */}
+                      <div className="absolute w-3 h-3 rounded-full bg-white border-2 border-primary cursor-grab"
+                        style={{ left: obj.width / 2 - 6, top: -22 }} onMouseDown={(e) => startDrag(e, obj.id, 'rotate')} />
+                      <div className="absolute w-px h-4 bg-primary pointer-events-none" style={{ left: obj.width / 2, top: -18 }} />
+                    </>
                   )}
                 </div>
               ))}
             </div>
           </div>
         </div>
+
+        {/* ═══ SAĞ PANEL — Stil Özelleştirme ═══ */}
+        {rightPanel === 'style' && selectedObject && (
+          <div className="w-64 bg-surface/40 border-l border-white/5 overflow-y-auto shrink-0 p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.15em]">Özellikler</h3>
+              <button onClick={() => setRightPanel('none')} className="p-1 text-on-surface-variant hover:text-white"><MaterialIcon icon="close" size={14} /></button>
+            </div>
+
+            {/* Konum + Boyut */}
+            <section className="space-y-2">
+              <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider">Konum & Boyut</p>
+              <div className="grid grid-cols-2 gap-2">
+                <NumInput label="X" value={Math.round(selectedObject.x)} onChange={v => updateObj({ x: v } as Partial<SlideObject>)} />
+                <NumInput label="Y" value={Math.round(selectedObject.y)} onChange={v => updateObj({ y: v } as Partial<SlideObject>)} />
+                <NumInput label="W" value={Math.round(selectedObject.width)} onChange={v => updateObj({ width: v } as Partial<SlideObject>)} />
+                <NumInput label="H" value={Math.round(selectedObject.height)} onChange={v => updateObj({ height: v } as Partial<SlideObject>)} />
+              </div>
+              <NumInput label="Döndürme" value={Math.round(selectedObject.rotation)} onChange={v => updateObj({ rotation: v } as Partial<SlideObject>)} suffix="°" />
+            </section>
+
+            {/* Opacity */}
+            <section>
+              <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider mb-1">Opaklık: {Math.round(selectedObject.opacity * 100)}%</p>
+              <input type="range" min={0} max={100} value={Math.round(selectedObject.opacity * 100)}
+                onChange={e => updateObj({ opacity: Number(e.target.value) / 100 } as Partial<SlideObject>)} className="w-full accent-primary" />
+            </section>
+
+            {/* Şekil Stili */}
+            {selectedObject.type === 'shape' && (
+              <ShapeProperties shape={selectedObject as ShapeObject} onUpdate={updateObj} />
+            )}
+
+            {/* Resim Filtreleri */}
+            {selectedObject.type === 'image' && (
+              <ImageProperties image={selectedObject as ImageObject} onUpdate={updateObj} />
+            )}
+          </div>
+        )}
       </div>
     </motion.div>
   );
 }
 
-// ─── Şekil SVG ──────────────────────────────────
+// ─── Yardımcı Bileşenler ──────────────────────
+
+function ToolBtn({ icon, label, onClick, active }: { icon: string; label: string; onClick: () => void; active?: boolean }) {
+  return (
+    <button onClick={onClick} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all text-xs font-bold ${active ? 'bg-primary text-white' : 'text-on-surface-variant hover:text-white hover:bg-white/10'}`}>
+      <MaterialIcon icon={icon} size={18} /> {label}
+    </button>
+  );
+}
+
+function Handle({ pos, x, y, onMouseDown }: { pos: string; x: number; y: number; onMouseDown: (e: React.MouseEvent) => void }) {
+  const cursors: Record<string, string> = { nw: 'nw-resize', n: 'n-resize', ne: 'ne-resize', e: 'e-resize', se: 'se-resize', s: 's-resize', sw: 'sw-resize', w: 'w-resize' };
+  return (
+    <div className="absolute w-2 h-2 bg-white border-2 border-primary z-50" style={{ left: x, top: y, cursor: cursors[pos] ?? 'pointer' }}
+      onMouseDown={(e) => { e.stopPropagation(); onMouseDown(e); }} />
+  );
+}
+
+function NumInput({ label, value, onChange, suffix }: { label: string; value: number; onChange: (v: number) => void; suffix?: string }) {
+  return (
+    <div className="flex items-center gap-1">
+      <span className="text-[9px] font-bold text-on-surface-variant w-3">{label}</span>
+      <input type="number" value={value} onChange={e => onChange(Number(e.target.value))}
+        className="flex-1 bg-white/5 border border-white/10 rounded px-2 py-1 text-[11px] text-white outline-none focus:ring-1 ring-primary w-full" />
+      {suffix && <span className="text-[9px] text-on-surface-variant">{suffix}</span>}
+    </div>
+  );
+}
+
+function ShapeProperties({ shape, onUpdate }: { shape: ShapeObject; onUpdate: (u: Partial<SlideObject>) => void }) {
+  return (
+    <>
+      <section className="space-y-2">
+        <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider">Dolgu</p>
+        <div className="flex items-center gap-2">
+          <select value={shape.fill.type} onChange={e => onUpdate({ fill: { ...shape.fill, type: e.target.value as 'solid' | 'gradient' | 'none' } } as Partial<SlideObject>)}
+            className="bg-white/5 border border-white/10 rounded px-2 py-1 text-[11px] text-white outline-none flex-1">
+            <option value="none">Yok</option><option value="solid">Düz Renk</option><option value="gradient">Gradient</option>
+          </select>
+          {shape.fill.type === 'solid' && <ColorPicker value={shape.fill.color} onChange={c => onUpdate({ fill: { ...shape.fill, color: c } } as Partial<SlideObject>)} />}
+        </div>
+      </section>
+      <section className="space-y-2">
+        <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider">Kenarlık</p>
+        <div className="flex items-center gap-2">
+          <ColorPicker value={shape.stroke.color} onChange={c => onUpdate({ stroke: { ...shape.stroke, color: c } } as Partial<SlideObject>)} />
+          <input type="number" min={0} max={20} value={shape.stroke.width}
+            onChange={e => onUpdate({ stroke: { ...shape.stroke, width: Number(e.target.value) } } as Partial<SlideObject>)}
+            className="w-14 bg-white/5 border border-white/10 rounded px-2 py-1 text-[11px] text-white outline-none" />
+          <span className="text-[9px] text-on-surface-variant">px</span>
+        </div>
+      </section>
+      <section>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={shape.shadow.enabled}
+            onChange={e => onUpdate({ shadow: { ...shape.shadow, enabled: e.target.checked } } as Partial<SlideObject>)}
+            className="accent-primary" />
+          <span className="text-[10px] font-bold text-white">Gölge</span>
+        </label>
+      </section>
+    </>
+  );
+}
+
+function ImageProperties({ image, onUpdate }: { image: ImageObject; onUpdate: (u: Partial<SlideObject>) => void }) {
+  return (
+    <>
+      <section className="space-y-2">
+        <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider">Parlaklık: {image.brightness}%</p>
+        <input type="range" min={0} max={200} value={image.brightness} onChange={e => onUpdate({ brightness: Number(e.target.value) } as Partial<SlideObject>)} className="w-full accent-primary" />
+      </section>
+      <section className="space-y-2">
+        <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider">Kontrast: {image.contrast}%</p>
+        <input type="range" min={0} max={200} value={image.contrast} onChange={e => onUpdate({ contrast: Number(e.target.value) } as Partial<SlideObject>)} className="w-full accent-primary" />
+      </section>
+      <section className="space-y-2">
+        <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider">Bulanıklık: {image.blur}px</p>
+        <input type="range" min={0} max={20} value={image.blur} onChange={e => onUpdate({ blur: Number(e.target.value) } as Partial<SlideObject>)} className="w-full accent-primary" />
+      </section>
+      <section className="space-y-2">
+        <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider">Köşe Yuvarlaklığı: {image.borderRadius}px</p>
+        <input type="range" min={0} max={50} value={image.borderRadius} onChange={e => onUpdate({ borderRadius: Number(e.target.value) } as Partial<SlideObject>)} className="w-full accent-primary" />
+      </section>
+    </>
+  );
+}
+
+// ─── Şekil SVG ──────────────────────────────
 
 function ShapeSVG({ shape }: { shape: ShapeObject }) {
   const w = shape.width, h = shape.height, pad = Math.max(shape.stroke.width, 2);
@@ -384,7 +423,6 @@ function ShapeSVG({ shape }: { shape: ShapeObject }) {
   const sw = Math.max(shape.stroke.width, 1);
   const dash = shape.stroke.style === 'dashed' ? '8 4' : shape.stroke.style === 'dotted' ? '3 3' : undefined;
   const p = { fill, stroke, strokeWidth: sw, strokeDasharray: dash };
-
   switch (shape.shapeType) {
     case 'rectangle': return <rect x={pad} y={pad} width={w - pad * 2} height={h - pad * 2} {...p} />;
     case 'roundedRect': return <rect x={pad} y={pad} width={w - pad * 2} height={h - pad * 2} rx={12} {...p} />;
