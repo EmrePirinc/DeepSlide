@@ -35,7 +35,7 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
   const [editingTextId, setEditingTextId] = useState<string | null>(null);
   const [showShapes, setShowShapes] = useState(false);
   const [zoom, setZoom] = useState(1);
-  const [rightPanel, setRightPanel] = useState<'none' | 'style'>('none');
+  const [rightPanel, setRightPanel] = useState<'none' | 'style'>('style'); // Her zaman açık
   const dragRef = useRef<{ mode: DragMode; id: string; startX: number; startY: number; objX: number; objY: number; objW: number; objH: number; objR: number } | null>(null);
 
   const fullImageUrl = useFullImage(image.blobKey);
@@ -51,11 +51,7 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
   const objects = activeSlide?.objects ?? [];
   const sortedObjects = [...objects].sort((a, b) => a.zIndex - b.zIndex);
 
-  // ─── Seçim değiştiğinde sağ panel aç ────────
-  useEffect(() => {
-    if (selectedObject) setRightPanel('style');
-    else setRightPanel('none');
-  }, [selectedObject?.id]);
+  // Panel her zaman açık — seçim değiştiğinde içerik güncellenir
 
   // ─── Aksiyonlar ─────────────────────────────
   const addText = useCallback(() => {
@@ -310,40 +306,104 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
         </div>
 
         {/* ═══ SAĞ PANEL — Stil Özelleştirme ═══ */}
-        {rightPanel === 'style' && selectedObject && (
+        {rightPanel === 'style' && (
           <div className="w-64 bg-surface/40 border-l border-white/5 overflow-y-auto shrink-0 p-4 space-y-4">
             <div className="flex items-center justify-between">
-              <h3 className="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.15em]">Özellikler</h3>
-              <button onClick={() => setRightPanel('none')} className="p-1 text-on-surface-variant hover:text-white"><MaterialIcon icon="close" size={14} /></button>
+              <h3 className="text-[10px] font-black text-on-surface-variant uppercase tracking-[0.15em]">
+                {selectedObject ? 'Özellikler' : 'Slayt'}
+              </h3>
+              <button onClick={() => setRightPanel(rightPanel === 'style' ? 'none' : 'style')} className="p-1 text-on-surface-variant hover:text-white">
+                <MaterialIcon icon="close" size={14} />
+              </button>
             </div>
 
-            {/* Konum + Boyut */}
-            <section className="space-y-2">
-              <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider">Konum & Boyut</p>
-              <div className="grid grid-cols-2 gap-2">
-                <NumInput label="X" value={Math.round(selectedObject.x)} onChange={v => updateObj({ x: v } as Partial<SlideObject>)} />
-                <NumInput label="Y" value={Math.round(selectedObject.y)} onChange={v => updateObj({ y: v } as Partial<SlideObject>)} />
-                <NumInput label="W" value={Math.round(selectedObject.width)} onChange={v => updateObj({ width: v } as Partial<SlideObject>)} />
-                <NumInput label="H" value={Math.round(selectedObject.height)} onChange={v => updateObj({ height: v } as Partial<SlideObject>)} />
+            {selectedObject ? (
+              <>
+                {/* Konum + Boyut */}
+                <section className="space-y-2">
+                  <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider">Konum & Boyut</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <NumInput label="X" value={Math.round(selectedObject.x)} onChange={v => updateObj({ x: v } as Partial<SlideObject>)} />
+                    <NumInput label="Y" value={Math.round(selectedObject.y)} onChange={v => updateObj({ y: v } as Partial<SlideObject>)} />
+                    <NumInput label="W" value={Math.round(selectedObject.width)} onChange={v => updateObj({ width: v } as Partial<SlideObject>)} />
+                    <NumInput label="H" value={Math.round(selectedObject.height)} onChange={v => updateObj({ height: v } as Partial<SlideObject>)} />
+                  </div>
+                  <NumInput label="Döndürme" value={Math.round(selectedObject.rotation)} onChange={v => updateObj({ rotation: v } as Partial<SlideObject>)} suffix="°" />
+                </section>
+
+                {/* Opacity */}
+                <section>
+                  <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider mb-1">Opaklık: {Math.round(selectedObject.opacity * 100)}%</p>
+                  <input type="range" min={0} max={100} value={Math.round(selectedObject.opacity * 100)}
+                    onChange={e => updateObj({ opacity: Number(e.target.value) / 100 } as Partial<SlideObject>)} className="w-full accent-primary" />
+                </section>
+
+                {/* Şekil Stili */}
+                {selectedObject.type === 'shape' && (
+                  <ShapeProperties shape={selectedObject as ShapeObject} onUpdate={updateObj} />
+                )}
+
+                {/* Resim Filtreleri */}
+                {selectedObject.type === 'image' && (
+                  <ImageProperties image={selectedObject as ImageObject} onUpdate={updateObj} />
+                )}
+
+                {/* Metin Stili */}
+                {selectedObject.type === 'text' && (
+                  <section className="space-y-2">
+                    <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider">Metin Rengi</p>
+                    <ColorPicker value={(selectedObject as TextObject).color} onChange={c => updateObj({ color: c } as Partial<SlideObject>)} />
+                  </section>
+                )}
+
+                {/* Z-Index Kontrolleri */}
+                <section>
+                  <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider mb-2">Katman Sırası</p>
+                  <div className="flex gap-1">
+                    <button onClick={() => useCanvasStore.getState().bringToFront(selectedObject.id)} className="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-white/5 text-on-surface-variant hover:text-white hover:bg-white/10 transition-all" title="En öne">↑↑</button>
+                    <button onClick={() => useCanvasStore.getState().bringForward(selectedObject.id)} className="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-white/5 text-on-surface-variant hover:text-white hover:bg-white/10 transition-all" title="Öne">↑</button>
+                    <button onClick={() => useCanvasStore.getState().sendBackward(selectedObject.id)} className="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-white/5 text-on-surface-variant hover:text-white hover:bg-white/10 transition-all" title="Arkaya">↓</button>
+                    <button onClick={() => useCanvasStore.getState().sendToBack(selectedObject.id)} className="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-white/5 text-on-surface-variant hover:text-white hover:bg-white/10 transition-all" title="En arkaya">↓↓</button>
+                  </div>
+                </section>
+
+                {/* Çoğalt */}
+                <button onClick={() => useCanvasStore.getState().duplicateSelected()} className="w-full py-2 rounded-lg text-[10px] font-bold bg-white/5 text-on-surface-variant hover:text-white hover:bg-white/10 transition-all flex items-center justify-center gap-1.5">
+                  <MaterialIcon icon="content_copy" size={14} /> Çoğalt
+                </button>
+              </>
+            ) : (
+              /* Nesne seçilmemişken genel bilgi */
+              <div className="space-y-4">
+                <section className="text-center py-6">
+                  <MaterialIcon icon="touch_app" size={32} className="text-on-surface-variant/30 mb-2" />
+                  <p className="text-xs text-on-surface-variant">Düzenlemek için bir nesneye tıklayın</p>
+                  <p className="text-[10px] text-on-surface-variant/50 mt-1">veya üst bardan yeni nesne ekleyin</p>
+                </section>
+
+                <section>
+                  <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider mb-2">Slayt Bilgisi</p>
+                  <div className="space-y-1 text-xs text-on-surface-variant">
+                    <p>{objects.length} nesne</p>
+                    <p>{objects.filter(o => o.type === 'text').length} metin</p>
+                    <p>{objects.filter(o => o.type === 'shape').length} şekil</p>
+                    <p>{objects.filter(o => o.type === 'image').length} resim</p>
+                  </div>
+                </section>
+
+                <section>
+                  <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider mb-2">Kısayollar</p>
+                  <div className="space-y-1 text-[10px] text-on-surface-variant/70">
+                    <p>⌘Z — Geri al</p>
+                    <p>⌘⇧Z — İleri al</p>
+                    <p>Delete — Sil</p>
+                    <p>⌘D — Çoğalt</p>
+                    <p>⌘A — Tümünü seç</p>
+                    <p>Shift+Sürükle — Oran koru</p>
+                    <p>Ctrl+Scroll — Zoom</p>
+                  </div>
+                </section>
               </div>
-              <NumInput label="Döndürme" value={Math.round(selectedObject.rotation)} onChange={v => updateObj({ rotation: v } as Partial<SlideObject>)} suffix="°" />
-            </section>
-
-            {/* Opacity */}
-            <section>
-              <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider mb-1">Opaklık: {Math.round(selectedObject.opacity * 100)}%</p>
-              <input type="range" min={0} max={100} value={Math.round(selectedObject.opacity * 100)}
-                onChange={e => updateObj({ opacity: Number(e.target.value) / 100 } as Partial<SlideObject>)} className="w-full accent-primary" />
-            </section>
-
-            {/* Şekil Stili */}
-            {selectedObject.type === 'shape' && (
-              <ShapeProperties shape={selectedObject as ShapeObject} onUpdate={updateObj} />
-            )}
-
-            {/* Resim Filtreleri */}
-            {selectedObject.type === 'image' && (
-              <ImageProperties image={selectedObject as ImageObject} onUpdate={updateObj} />
             )}
           </div>
         )}
