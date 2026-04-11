@@ -69,12 +69,23 @@ export function Header() {
 
               {/* CTA — context'e göre */}
               {isEditor ? (
-                <Link href={currentPresentation ? `/presentation/${currentPresentation.id}/present` : '#'}>
-                  <button className="px-6 py-2.5 text-sm font-bold bg-primary hover:bg-primary-container text-white rounded-xl active:scale-95 transition-all shadow-xl shadow-primary/30 flex items-center gap-2">
+                currentPresentation && currentPresentation.images.length > 0 ? (
+                  <Link href={`/presentation/${currentPresentation.id}/present`}>
+                    <button className="px-6 py-2.5 text-sm font-bold bg-primary hover:bg-primary-container text-white rounded-xl active:scale-95 transition-all shadow-xl shadow-primary/30 flex items-center gap-2">
+                      <MaterialIcon icon="play_arrow" size={20} />
+                      Sunumu Başlat
+                    </button>
+                  </Link>
+                ) : (
+                  <button
+                    disabled
+                    title="Önce görsel yükleyin"
+                    className="px-6 py-2.5 text-sm font-bold bg-white/10 text-on-surface-variant rounded-xl cursor-not-allowed flex items-center gap-2 opacity-50"
+                  >
                     <MaterialIcon icon="play_arrow" size={20} />
                     Sunumu Başlat
                   </button>
-                </Link>
+                )
               ) : (
                 <Link href="/presentation/new">
                   <button className="px-6 py-2.5 text-sm font-bold bg-primary hover:bg-primary-container text-white rounded-xl active:scale-95 transition-all shadow-xl shadow-primary/30 flex items-center gap-2">
