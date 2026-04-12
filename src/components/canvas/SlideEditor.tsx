@@ -259,7 +259,15 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
 
           <div ref={canvasRef} className="relative shadow-2xl rounded-xl transition-transform duration-100"
             style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}
-            onClick={() => { if (!editingTextId) { useCanvasStore.getState().deselectAll(); setEditingTextId(null); } }}>
+            onMouseDown={(e) => {
+              // Sadece doğrudan canvas'a (arka plana) tıklanınca seçimi kaldır
+              if (e.target === e.currentTarget || (e.target as HTMLElement).tagName === 'IMG') {
+                if (!editingTextId) {
+                  useCanvasStore.getState().deselectAll();
+                  setEditingTextId(null);
+                }
+              }
+            }}>
             {/* Arka plan görsel */}
             {imageSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -272,7 +280,8 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
             <div className="absolute inset-0 rounded-xl">
               {sortedObjects.map(obj => (
                 <div key={obj.id} style={{ position: 'absolute', left: obj.x, top: obj.y, width: obj.type !== 'line' ? obj.width : undefined, height: obj.type !== 'line' ? obj.height : undefined, transform: obj.rotation ? `rotate(${obj.rotation}deg)` : undefined, zIndex: obj.zIndex, opacity: obj.opacity }}
-                  onMouseDown={(e) => startDrag(e, obj.id, 'move')}>
+                  onMouseDown={(e) => startDrag(e, obj.id, 'move')}
+                  onClick={(e) => e.stopPropagation()}>
 
                   {/* Metin */}
                   {obj.type === 'text' && (editingTextId === obj.id ? (
