@@ -31,7 +31,7 @@ import { useImageUpload } from '@/hooks/useImageUpload';
 import { clusterImagesByKeywords } from '@/lib/utils/clustering';
 import { exportToPDF, downloadBlob } from '@/lib/export/pdfExport';
 import { exportToPPT } from '@/lib/export/pptExport';
-import { initializeCanvasSlides, saveCanvasSlides } from '@/lib/db/canvas-objects';
+import { syncCanvasSlidesWithImages, saveCanvasSlides } from '@/lib/db/canvas-objects';
 import type { PresentationImage, AIProviderType } from '@/types/presentation';
 import type { ThemeId } from '@/lib/themes/types';
 import type { TransitionType } from '@/lib/animation/transitions/types';
@@ -74,10 +74,14 @@ export default function PresentationEditorPage({
   useEffect(() => { loadPresentation(id); }, [id, loadPresentation]);
 
   useEffect(() => {
-    if (currentPresentation) {
-      initializeCanvasSlides(currentPresentation.id).then(s => loadSlides(currentPresentation.id, s));
+    if (currentPresentation && currentPresentation.images.length > 0) {
+      // Her görsel için ayrı canvas slayt oluştur (image.id = slide.id)
+      syncCanvasSlidesWithImages(
+        currentPresentation.id,
+        currentPresentation.images.map(img => img.id),
+      ).then(s => loadSlides(currentPresentation.id, s));
     }
-  }, [currentPresentation?.id]);
+  }, [currentPresentation?.id, currentPresentation?.images.length]);
 
   useEffect(() => {
     if (slides.length === 0) return;
@@ -353,7 +357,7 @@ export default function PresentationEditorPage({
         {editingImage && currentPresentation && (
           <SlideEditor
             image={editingImage}
-            slideId={slides[0]?.id ?? ''}
+            slideId={editingImage.id}
             onClose={() => setEditingImage(null)}
           />
         )}

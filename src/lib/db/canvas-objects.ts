@@ -88,3 +88,44 @@ export async function initializeCanvasSlides(presentationId: string): Promise<Ca
   await saveCanvasSlide(initialSlide);
   return [initialSlide];
 }
+
+/**
+ * Her görsel için ayrı canvas slayt oluştur.
+ * Slayt ID'si görsel ID'si ile eşleşir (1:1 ilişki).
+ * Var olan slaytları korur, sadece eksik olanları oluşturur.
+ */
+export async function ensureSlideForImage(
+  presentationId: string,
+  imageId: string,
+  order: number,
+): Promise<CanvasSlide> {
+  // Slayt ID'si = image ID ile aynı
+  const existing = await getCanvasSlide(imageId);
+  if (existing) return existing;
+
+  const slide: CanvasSlide = {
+    id: imageId,
+    presentationId,
+    order,
+    objects: [],
+    background: { ...DEFAULT_BACKGROUND },
+    hidden: false,
+  };
+
+  await saveCanvasSlide(slide);
+  return slide;
+}
+
+/**
+ * Sunumdaki tüm görseller için canvas slaytlarını hazırla.
+ * Eksik olanları oluşturur, var olanları korur.
+ */
+export async function syncCanvasSlidesWithImages(
+  presentationId: string,
+  imageIds: string[],
+): Promise<CanvasSlide[]> {
+  const slides = await Promise.all(
+    imageIds.map((imgId, idx) => ensureSlideForImage(presentationId, imgId, idx)),
+  );
+  return slides;
+}

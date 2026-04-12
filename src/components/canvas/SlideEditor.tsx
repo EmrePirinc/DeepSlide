@@ -434,8 +434,22 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
 
 // ─── Floating Contextual Toolbars (Canva Modeli) ──────────
 
-const FONTS = ['Inter', 'Roboto', 'Montserrat', 'Playfair Display', 'Oswald', 'Lato', 'Poppins', 'Merriweather'];
-const FONT_SIZES = [10, 12, 14, 16, 20, 24, 32, 48, 64, 96];
+const FONTS = [
+  // Sans-serif (en popüler)
+  'Inter', 'Roboto', 'Open Sans', 'Montserrat', 'Lato', 'Poppins',
+  'Raleway', 'Nunito', 'Source Sans 3', 'Ubuntu', 'Work Sans',
+  'Quicksand', 'Fira Sans', 'Rubik',
+  // Serif
+  'Playfair Display', 'Merriweather', 'Libre Baskerville', 'Abril Fatface',
+  // Display / Bold
+  'Oswald', 'Bebas Neue', 'Anton', 'Righteous',
+  // Handwriting / Script
+  'Dancing Script', 'Pacifico', 'Lobster', 'Caveat', 'Satisfy',
+  'Permanent Marker', 'Shadows Into Light', 'Indie Flower',
+  // Fun
+  'Comfortaa',
+];
+const FONT_SIZES = [8, 10, 12, 14, 16, 18, 20, 24, 28, 32, 36, 42, 48, 56, 64, 72, 84, 96, 120];
 
 function TextFloatingTools({ textObject, onUpdate }: { textObject: TextObject; onUpdate: (u: Partial<SlideObject>) => void }) {
   return (
