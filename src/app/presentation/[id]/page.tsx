@@ -9,7 +9,6 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { PresentationCanvas } from '@/components/canvas/PresentationCanvas';
 import { KeywordEditor } from '@/components/keywords/KeywordEditor';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
-import { RehearsalView } from '@/components/rehearsal/RehearsalView';
 import { FullResImage } from '@/components/canvas/FullResImage';
 import { ExportGate } from '@/components/billing/ExportGate';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -67,7 +66,6 @@ export default function PresentationEditorPage({
   const [selectedImage, setSelectedImage] = useState<PresentationImage | null>(null);
   const [editingImage, setEditingImage] = useState<PresentationImage | null>(null); // SlideEditor açık mı
   const [showKeywordDialog, setShowKeywordDialog] = useState(false);
-  const [showRehearsal, setShowRehearsal] = useState(false);
   const [showExportGate, setShowExportGate] = useState(false);
 
   // ─── Yükleme ────────────────────────────────
@@ -353,16 +351,6 @@ export default function PresentationEditorPage({
                     )}
                   </section>
 
-                  {/* Rehearsal */}
-                  {completedCount > 0 && !showRehearsal && (
-                    <button onClick={() => setShowRehearsal(true)}
-                      className="w-full py-4 glass-card border border-white/5 rounded-2xl flex items-center justify-center gap-3 text-xs font-black tracking-widest text-white hover:bg-primary/10 hover:border-primary/40 transition-all active:scale-[0.98] uppercase">
-                      <span className="material-symbols-outlined text-[20px]">mic</span> Prova Modu
-                    </button>
-                  )}
-                  {showRehearsal && (
-                    <RehearsalView speechProvider={currentPresentation.settings.speechProvider} lang={currentPresentation.settings.language} threshold={currentPresentation.settings.matchThreshold} onAddSynonym={addSynonym} onClose={() => setShowRehearsal(false)} />
-                  )}
                 </div>
               )}
             </div>
