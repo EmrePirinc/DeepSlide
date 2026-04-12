@@ -18,6 +18,7 @@ import { AnimationOrchestrator } from '@/lib/animation/orchestrator';
 export function useKeywordMatch(threshold: number = 0.7) {
   const matcherRef = useRef(new KeywordMatcher());
   const orchestratorRef = useRef(new AnimationOrchestrator());
+  const lastPhraseRef = useRef<string>('');
 
   const { interimTranscript, transcript } = useSpeechStore();
   const { currentPresentation, setActiveImages, setFocusedImage, setViewMode } = usePresentationStore();
@@ -57,6 +58,12 @@ export function useKeywordMatch(threshold: number = 0.7) {
     // Son 5 kelimeyi al — çok kelimeli keyword'ler için (3-gram + buffer)
     const recentWords = words.slice(-5);
     if (recentWords.length === 0) return;
+
+    // Aynı kelimeler tekrar gelirse match'i atla — interim transkript her 100-300ms
+    // aynı parçayı tekrar yolluyor, bu da orchestrator'a gereksiz focus çağrısı demek.
+    const phrase = recentWords.join(' ');
+    if (phrase === lastPhraseRef.current) return;
+    lastPhraseRef.current = phrase;
 
     const matches = matcherRef.current.match(recentWords, threshold);
     if (matches.length === 0) return;

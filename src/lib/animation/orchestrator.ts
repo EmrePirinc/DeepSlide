@@ -17,7 +17,9 @@ export class AnimationOrchestrator {
   private onChange: ((activeIds: string[], focusedId: string | null) => void) | null = null;
   private currentFocusedId: string | null = null;
 
-  private readonly DECAY_INTERVAL_MS = 2000;
+  // Hız ayarları: yeni keyword geldiğinde eskisi kısa sürede pasifleşmeli.
+  // 1.0 → 0.3 geçiş süresi ≈ (1.0-0.3)/DECAY_AMOUNT × INTERVAL = 7 × 500 = 3.5sn
+  private readonly DECAY_INTERVAL_MS = 500;
   private readonly DECAY_AMOUNT = 0.1;
   private readonly DEACTIVATE_THRESHOLD = 0.3;
 
@@ -46,12 +48,27 @@ export class AnimationOrchestrator {
   /**
    * Tek görsel odakla — en iyi keyword match sonucundan çağrılır.
    * Diğer görsellerin relevance skoru decay'e devam eder.
+   *
+   * Aynı görsele tekrar focus çağrılırsa skor'u tazeler ama gereksiz
+   * notifyChange (re-render) tetiklemez — interim transcript güncellemelerinde
+   * stutter'ı önler.
    */
   focusImage(imageId: string, score: number = 1.0): void {
-    this.relevanceScores.set(imageId, Math.min(1.0, score));
+    const newScore = Math.min(1.0, score);
+    const prevFocusedId = this.currentFocusedId;
+    const prevScore = this.relevanceScores.get(imageId) ?? 0;
+
+    // Skoru her durumda tazele (decay reset)
+    this.relevanceScores.set(imageId, newScore);
     this.currentFocusedId = imageId;
-    this.notifyChange();
     this.ensureDecayRunning();
+
+    // Focus değişmediyse VE skor farkı önemsizse re-render atla
+    const focusUnchanged = prevFocusedId === imageId;
+    const scoreNegligible = Math.abs(newScore - prevScore) < 0.05;
+    if (focusUnchanged && scoreNegligible) return;
+
+    this.notifyChange();
   }
 
   /**
