@@ -35,10 +35,21 @@ function toPresentationImages(scene: SceneImage[]): PresentationImage[] {
   }));
 }
 
-// Gold set runner — matcher'ı her vaka için yeniden kur, en iyi matchi döndür
-function matchScene(scene: SceneImage[], spoken: string): string | null {
+// Gold set runner — matcher'ı her vaka için yeniden kur, en iyi matchi döndür.
+// J kategori (streaming prefix) vakalarında matchStreamingPrefix çağrılır.
+function matchScene(
+  scene: SceneImage[],
+  spoken: string,
+  caseInfo?: { streamingPrefix?: boolean },
+): string | null {
   const matcher = new KeywordMatcher();
   matcher.buildIndex(toPresentationImages(scene));
+
+  if (caseInfo?.streamingPrefix) {
+    const m = matcher.matchStreamingPrefix(spoken, 0.7);
+    return m?.imageIds[0] ?? null;
+  }
+
   const words = spoken.toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
   const recentWords = words.slice(-8); // gold set'te cümleler daha uzun, window'u genişlet
   const matches = matcher.match(recentWords, 0.7);
@@ -146,5 +157,45 @@ describe('keywordMatcher gold set', () => {
   it('all hard negatives (G category) correctly rejected', () => {
     const g = result.byCategory.G ?? { pass: 0, fail: 0 };
     expect(g.fail).toBe(0);
+  });
+
+  it('streaming prefix (J category) all pass', () => {
+    const j = result.byCategory.J ?? { pass: 0, fail: 0 };
+    expect(j.fail).toBe(0);
+    expect(j.pass).toBeGreaterThan(0);
+  });
+});
+
+describe('keywordMatcher — streaming prefix (unit)', () => {
+  const scene: SceneImage[] = [
+    { id: 'img-path', keywords: [{ text: 'yürüyüş yolu' }] },
+    { id: 'img-hay', keywords: [{ text: 'saman balyası' }] },
+    { id: 'img-fog', keywords: [{ text: 'sis' }] },
+  ];
+
+  const matcher = new KeywordMatcher();
+  matcher.buildIndex(toPresentationImages(scene));
+
+  it('triggers early on unique prefix', () => {
+    const m = matcher.matchStreamingPrefix('yuru', 0.7);
+    expect(m).not.toBeNull();
+    expect(m!.imageIds[0]).toBe('img-path');
+    expect(m!.score).toBe(0.85);
+  });
+
+  it('returns null on ambiguous prefix', () => {
+    const ambScene: SceneImage[] = [
+      { id: 'img-a', keywords: [{ text: 'yürüyüş yolu' }] },
+      { id: 'img-b', keywords: [{ text: 'yürüyüş parkuru' }] },
+    ];
+    const ambMatcher = new KeywordMatcher();
+    ambMatcher.buildIndex(toPresentationImages(ambScene));
+    expect(ambMatcher.matchStreamingPrefix('yuruyus', 0.7)).toBeNull();
+  });
+
+  it('enforces minimum depth of 3 chars', () => {
+    expect(matcher.matchStreamingPrefix('sa', 0.7)).toBeNull();
+    expect(matcher.matchStreamingPrefix('s', 0.7)).toBeNull();
+    expect(matcher.matchStreamingPrefix('', 0.7)).toBeNull();
   });
 });

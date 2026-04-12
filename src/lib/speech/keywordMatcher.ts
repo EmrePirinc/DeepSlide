@@ -6,6 +6,7 @@ import type { MatchResult } from './types';
 import { normalizePhrase } from './normalize';
 import { stemPhrase } from './stemmer';
 import { ensembleScore } from './similarity';
+import { KeywordTrie, type TrieEntry } from './trie';
 
 /**
  * Türkçe keyword eşleştirme motoru — ensemble similarity + stem + normalization.
@@ -79,6 +80,12 @@ export class KeywordMatcher {
   private allEntries: IndexEntry[] = [];
 
   /**
+   * Karakter düzeyinde trie — streaming prefix early-commit için.
+   * buildIndex'te PASS 3 olarak doldurulur.
+   */
+  private trie = new KeywordTrie();
+
+  /**
    * Görsellerin keyword'lerinden inverted index oluşturur.
    * Her keyword için:
    *   - Ana text
@@ -110,6 +117,55 @@ export class KeywordMatcher {
     // kelime parçalarının owner setini hesapla, her multi-word keyword'ün
     // parçaları benzersizse partial trigger ekle.
     this.addPartialTriggers(images);
+
+    // PASS 3: Streaming prefix trie — her image'ın tam kelimelerini
+    // (normalized + stemmed) trie'ya yatırır. findUniquePrefix ile
+    // kullanıcı henüz kelimeyi bitirmeden benzersiz görsele tetik atılır.
+    this.buildStreamingTrie(images);
+  }
+
+  /**
+   * PASS 3 — Karakter düzeyli trie'ya normalized + stemmed formları koyar.
+   *
+   * Önemli: Multi-word keyword'ler kelime bazında token'lara BÖLÜNÜR ve her
+   * token ayrı bir entry olarak trie'ya girer. Böylece kullanıcı cümle içinde
+   * herhangi bir kelimenin başını söylediğinde (örn. "yürü..." → "yürüyüş")
+   * trie bulabilir. Eğer aynı kelime (stem formu da dahil) birden fazla image'da
+   * geçiyorsa trie post-order DFS'te uniqueImageId null olur → ambiguous →
+   * streaming tetiklemesi yapılmaz.
+   *
+   * Örnek:
+   *   "yürüyüş yolu" (img-A), "dağ yürüyüşü" (img-B)
+   *     → "yuruyus" token'ı hem A hem B için trie'da → ambiguous
+   *
+   *   "yürüyüş yolu" (img-A), "saman balyası" (img-B)
+   *     → "yuruyus" sadece A'da → benzersiz → erken tetik
+   */
+  private buildStreamingTrie(images: PresentationImage[]): void {
+    const entries: TrieEntry[] = [];
+
+    const addTokens = (phrase: string, imageId: string): void => {
+      const tokens = phrase.split(/\s+/).filter((t) => t.length >= 2);
+      for (const token of tokens) {
+        entries.push({ text: token, imageId });
+      }
+    };
+
+    for (const image of images) {
+      for (const kw of image.keywords) {
+        const terms = [kw.text, ...(kw.forms ?? [])];
+        for (const term of terms) {
+          if (!term) continue;
+          const normalized = normalizePhrase(term);
+          if (normalized) addTokens(normalized, image.id);
+
+          const stemmed = normalizePhrase(stemPhrase(normalized));
+          if (stemmed && stemmed !== normalized) addTokens(stemmed, image.id);
+        }
+      }
+    }
+
+    this.trie.build(entries);
   }
 
   private addKeywordToIndex(imageId: string, kw: Keyword): void {
@@ -451,6 +507,43 @@ export class KeywordMatcher {
 
     const avgScore = sum / scores.length;
     return 0.6 * minScore + 0.4 * avgScore;
+  }
+
+  /**
+   * Streaming prefix early-commit.
+   *
+   * Kullanıcı kelimeyi henüz bitirmeden, interim transcript'in son
+   * (tail) token'ının karakter prefix'i sahnedeki sadece bir görseli
+   * benzersiz olarak tanımlıyorsa, o görsel için MatchResult döner.
+   *
+   * Skor sabit 0.85 — exact match (1.0)'tan düşük ama threshold'un üstünde,
+   * böylece tetikler ama gerçek bir tam eşleşme geldiğinde (daha yüksek
+   * skorla) override edilir.
+   *
+   * @param tail Normalize edilmemiş tek kelime (son interim token)
+   * @param baseThreshold Global threshold — kısa tail için ek kurallar uygular
+   * @returns Bulunan ise MatchResult, aksi halde null
+   */
+  matchStreamingPrefix(
+    tail: string,
+    baseThreshold: number = 0.7,
+  ): MatchResult | null {
+    if (!tail) return null;
+    const normalized = normalizePhrase(tail);
+    if (!normalized || normalized.length < 3) return null;
+
+    const match = this.trie.findUniquePrefix(normalized);
+    if (!match) return null;
+
+    // Threshold kontrolü — baseThreshold'dan düşük skorla tetiklemeyelim
+    const score = 0.85;
+    if (score < baseThreshold) return null;
+
+    return {
+      keyword: normalized,
+      imageIds: [match.imageId],
+      score,
+    };
   }
 
   get size(): number {

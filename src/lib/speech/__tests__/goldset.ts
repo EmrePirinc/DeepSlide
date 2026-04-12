@@ -36,11 +36,17 @@ export interface SceneImage {
 
 export interface GoldCase {
   id: string;
-  category: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H';
+  category: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'J';
   scene: SceneImage[];
   spoken: string;
   expected: string | null;
   rationale: string;
+  /**
+   * J kategori (streaming prefix) vakaları için, spoken değeri tam kelime
+   * değil, kelimenin bir karakter prefix'idir. Runner bu flag'e bakıp
+   * `matchStreamingPrefix` metodunu çağırır.
+   */
+  streamingPrefix?: boolean;
 }
 
 // Ortak sahneler — vakalar içinde tekrar kullanılır
@@ -329,6 +335,67 @@ export const GOLD_SET: GoldCase[] = [
     expected: 'img-tree',
     rationale: 'Keyword "agaç" eksik yazılmış — asciify + stem ile eşleşmeli',
   },
+
+  // ========== J: Streaming Prefix Early-Commit ==========
+  // spoken = tam kelime değil, kelimenin kısmi prefix'i (kullanıcı hâlâ konuşuyor).
+  // Runner `matchStreamingPrefix` metodunu kullanır (streamingPrefix: true).
+  {
+    id: 'J1',
+    category: 'J',
+    scene: SCENE_LANDSCAPE,
+    spoken: 'yuru',
+    expected: 'img-path',
+    rationale: 'yuru benzersiz prefix (yürüyüş yolu) → erken tetik',
+    streamingPrefix: true,
+  },
+  {
+    id: 'J2',
+    category: 'J',
+    scene: SCENE_LANDSCAPE,
+    spoken: 'sam',
+    expected: 'img-hay',
+    rationale: 'sam benzersiz prefix (saman balyası) → erken tetik, min depth 3',
+    streamingPrefix: true,
+  },
+  {
+    id: 'J3',
+    category: 'J',
+    scene: [
+      { id: 'img-walk-path', keywords: [{ text: 'yürüyüş yolu' }] },
+      { id: 'img-mountain-walk', keywords: [{ text: 'dağ yürüyüşü' }] },
+    ],
+    spoken: 'yuruyus',
+    expected: null,
+    rationale: 'yuruyus iki keyword de içeriyor → ambiguous, null',
+    streamingPrefix: true,
+  },
+  {
+    id: 'J4',
+    category: 'J',
+    scene: SCENE_LANDSCAPE,
+    spoken: 'sis',
+    expected: 'img-fog',
+    rationale: 'sis tam kelime ama streaming prefix de bulabilir (benzersiz)',
+    streamingPrefix: true,
+  },
+  {
+    id: 'J5',
+    category: 'J',
+    scene: SCENE_LANDSCAPE,
+    spoken: 'sa',
+    expected: null,
+    rationale: '2 char minimum depth 3 altında → null (çok kısa)',
+    streamingPrefix: true,
+  },
+  {
+    id: 'J6',
+    category: 'J',
+    scene: SCENE_LANDSCAPE,
+    spoken: 'dag',
+    expected: 'img-mountain',
+    rationale: 'dag asciified dağ benzersiz prefix → erken tetik',
+    streamingPrefix: true,
+  },
 ];
 
 /**
@@ -350,7 +417,7 @@ export interface EvalResult {
 }
 
 export function evaluateGoldSet(
-  fn: (scene: SceneImage[], spoken: string) => string | null,
+  fn: (scene: SceneImage[], spoken: string, caseInfo: GoldCase) => string | null,
 ): EvalResult {
   const result: EvalResult = {
     total: GOLD_SET.length,
@@ -367,7 +434,7 @@ export function evaluateGoldSet(
   };
 
   for (const gc of GOLD_SET) {
-    const got = fn(gc.scene, gc.spoken);
+    const got = fn(gc.scene, gc.spoken, gc);
     const pass =
       gc.expected === null
         ? got === null

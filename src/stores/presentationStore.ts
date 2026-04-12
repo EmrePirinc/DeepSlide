@@ -51,6 +51,14 @@ interface PresentationState {
   setIsPresenting: (value: boolean) => void;
   setFocusedImage: (id: string | null) => void;
   setViewMode: (mode: 'overview' | 'focused') => void;
+
+  /**
+   * Şu anki odaklanılan görsel + komşuları (±1 slayt) ID listesi.
+   * useKeywordMatch locality prior hesabı için kullanılır — komşu
+   * slaytlardaki keyword'lere hafif (+0.03) boost verir, böylece
+   * sunum akışı içinde tie-break doğal kalır.
+   */
+  getActiveSlideImageIds: () => string[];
 }
 
 export const usePresentationStore = create<PresentationState>((set, get) => ({
@@ -270,4 +278,23 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
     viewMode: mode,
     focusedImageId: mode === 'overview' ? null : get().focusedImageId,
   }),
+
+  getActiveSlideImageIds: () => {
+    const state = get();
+    const images = state.currentPresentation?.images ?? [];
+    if (images.length === 0) return [];
+    const focused = state.focusedImageId;
+    if (!focused) {
+      // Henüz bir focus yok → tüm görseller eşit
+      return images.map((i) => i.id);
+    }
+    const idx = images.findIndex((i) => i.id === focused);
+    if (idx === -1) return [focused];
+    // Mevcut + ±1 komşu
+    const neighbors: string[] = [];
+    if (idx - 1 >= 0) neighbors.push(images[idx - 1].id);
+    neighbors.push(images[idx].id);
+    if (idx + 1 < images.length) neighbors.push(images[idx + 1].id);
+    return neighbors;
+  },
 }));
