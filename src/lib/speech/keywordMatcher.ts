@@ -770,6 +770,20 @@ export class KeywordMatcher {
       return results;
     }
 
+    // KRİTİK: Embedder HAZIR DEĞİLSE rerank'i tamamen atla.
+    // Model hâlâ indiriliyorsa (ilk sunum açılışında ~3-5 sn) bu satır olmadan
+    // her match çağrısı 45 MB modelin inmesini bekler → büyük gecikme +
+    // geç çözülen promise'lar flicker yaratır. Model hazır olunca
+    // prefetchEmbeddings cache'i doldurur ve bir sonraki match rerank'i kullanır.
+    if (!embedder.isReady()) {
+      return results;
+    }
+
+    // Embedding cache tamamen boşsa rerank yapılamaz
+    if (this.embeddingCache.size === 0) {
+      return results;
+    }
+
     // Query embed et (hata → fallback)
     let queryVec: Float32Array;
     try {

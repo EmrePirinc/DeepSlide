@@ -43,6 +43,14 @@ export function useKeywordMatch(threshold: number = 0.7) {
    */
   const recentFocusRef = useRef<Map<string, number>>(new Map());
 
+  /**
+   * matchSeqRef — her match çağrısı için monotonik ID.
+   * Async rerank tamamlandığında eğer seq güncellemişse stale sonuç iptal.
+   * Bu, geç çözülen rerank promise'ının eski bir keyword'ü zoom'lamasını önler
+   * (kullanıcı sessizken "kendiliğinden zoom" flicker'ının gerçek kök nedeni).
+   */
+  const matchSeqRef = useRef<number>(0);
+
   const { interimTranscript, transcript, interimConfidence } = useSpeechStore();
   const { currentPresentation, setActiveImages, setFocusedImage, setViewMode } = usePresentationStore();
 
@@ -167,38 +175,66 @@ export function useKeywordMatch(threshold: number = 0.7) {
       if (now - at > 5000) recentFocusRef.current.delete(id);
     }
 
-    // ----- CASCADED EMBEDDING RERANK (async, graceful) -----
-    // Top score belirsizlik band'ındaysa (0.55-0.80) mE5 embedding ile rerank.
-    // Model hazır değilse sessizce atlar, ensemble'a güvenir.
+    // ----- IMMEDIATE FOCUS (ensemble-only, sync) -----
+    // Önce ensemble sonucuyla hemen focus et. Bu sayede kullanıcı konuştuğu
+    // anda görsel tepki verir — embedding download / rerank beklemeden.
+    const ensembleTop = boosted[0];
+    if (ensembleTop && ensembleTop.imageIds.length > 0) {
+      orchestratorRef.current.focusImage(
+        ensembleTop.imageIds[0],
+        ensembleTop.score,
+      );
+      recentFocusRef.current.set(ensembleTop.imageIds[0], Date.now());
+    }
+    useSpeechStore.getState().setMatches(boosted);
+
+    matchDebug('fullMatch', {
+      phrase,
+      topKeyword: ensembleTop?.keyword,
+      topScore: ensembleTop?.score,
+      effectiveThreshold,
+    });
+
+    // ----- CASCADED EMBEDDING RERANK (async, stale-safe) -----
+    // Sadece belirsizlik band'ında (0.55-0.80) çalışır VE embedder hazırsa.
+    // Model yüklü değilse rerankWithEmbedding anında döner.
+    // Stale rerank koruması: her match için sequence number al, async dönüşte
+    // aynı seq hâlâ aktif mi kontrol et. Kullanıcı başka şey söylediyse atla.
+    if (!ensembleTop) return;
+    const mySeq = ++matchSeqRef.current;
     const matcher = matcherRef.current;
+
     void (async () => {
-      let finalBoosted = boosted;
+      let reranked = boosted;
       try {
-        finalBoosted = await matcher.rerankWithEmbedding(text, boosted);
+        reranked = await matcher.rerankWithEmbedding(text, boosted);
       } catch {
-        // fallback: ensemble-only
+        return;
       }
 
-      const topMatch = finalBoosted[0];
-      if (!topMatch) return;
+      // STALE GUARD: bu rerank başlatıldıktan sonra başka match geldiyse,
+      // (kullanıcı yeni cümle söylediyse veya sessizleştiyse), bu sonucu at.
+      if (matchSeqRef.current !== mySeq) return;
 
-      matchDebug('fullMatch', {
-        phrase,
-        topKeyword: topMatch.keyword,
-        topScore: topMatch.score,
-        effectiveThreshold,
-        reranked: finalBoosted !== boosted,
+      // Eğer rerank sıralamayı değiştirmediyse yeni focus'a gerek yok
+      const rerankedTop = reranked[0];
+      if (!rerankedTop || rerankedTop.imageIds[0] === ensembleTop.imageIds[0]) {
+        return;
+      }
+
+      // Rerank yeni bir image seçtiyse focus et (embedding semantic override)
+      matchDebug('rerankOverride', {
+        from: ensembleTop.imageIds[0],
+        to: rerankedTop.imageIds[0],
+        ensembleScore: ensembleTop.score,
+        rerankScore: rerankedTop.score,
       });
-
-      if (topMatch.imageIds.length > 0) {
-        orchestratorRef.current.focusImage(topMatch.imageIds[0], topMatch.score);
-        recentFocusRef.current.set(topMatch.imageIds[0], Date.now());
-      } else {
-        const allImageIds = finalBoosted.flatMap((m) => m.imageIds);
-        orchestratorRef.current.activateImages([...new Set(allImageIds)]);
-      }
-
-      useSpeechStore.getState().setMatches(finalBoosted);
+      orchestratorRef.current.focusImage(
+        rerankedTop.imageIds[0],
+        rerankedTop.score,
+      );
+      recentFocusRef.current.set(rerankedTop.imageIds[0], Date.now());
+      useSpeechStore.getState().setMatches(reranked);
     })();
   }, [interimTranscript, transcript, threshold, interimConfidence]);
 
