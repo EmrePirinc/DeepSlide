@@ -12,6 +12,7 @@ import { AnimationOrchestrator } from '@/lib/animation/orchestrator';
  * Ses transkriptini keyword'lerle eşleştirir.
  *
  * Prezi modu: en yüksek skora sahip tek görsel `focusImage()` ile seçilir.
+ * Çok kelimeli keyword desteği: N-gram (1-3 kelime) ile eşleştirir.
  * Çoklu eşleşmede en iyi skor kazanır — diğerleri decay'e devam eder.
  */
 export function useKeywordMatch(threshold: number = 0.7) {
@@ -19,7 +20,7 @@ export function useKeywordMatch(threshold: number = 0.7) {
   const orchestratorRef = useRef(new AnimationOrchestrator());
 
   const { interimTranscript, transcript } = useSpeechStore();
-  const { currentPresentation, setActiveImages } = usePresentationStore();
+  const { currentPresentation, setActiveImages, setFocusedImage, setViewMode } = usePresentationStore();
 
   // Keyword index'i oluştur (presentation değiştiğinde)
   useEffect(() => {
@@ -28,17 +29,24 @@ export function useKeywordMatch(threshold: number = 0.7) {
     }
   }, [currentPresentation?.images]);
 
-  // Orchestrator onChange callback
+  // Orchestrator onChange callback — hem activeIds hem focusedId işle
   useEffect(() => {
     const orchestrator = orchestratorRef.current;
-    orchestrator.setOnChange((activeIds) => {
+    orchestrator.setOnChange((activeIds, focusedId) => {
       setActiveImages(activeIds);
+      // KRİTİK: focusedId varsa slaytı odakla + focused moduna geç (Prezi zoom)
+      if (focusedId) {
+        setFocusedImage(focusedId);
+        setViewMode('focused');
+      } else {
+        setFocusedImage(null);
+      }
     });
 
     return () => {
       orchestrator.destroy();
     };
-  }, [setActiveImages]);
+  }, [setActiveImages, setFocusedImage, setViewMode]);
 
   // Transkript değiştiğinde eşleştir
   useEffect(() => {
@@ -46,15 +54,15 @@ export function useKeywordMatch(threshold: number = 0.7) {
     if (!text) return;
 
     const words = text.toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
-    // Son 3 kelimeyi al — hızlı eşleşme, düşük false positive
-    const recentWords = words.slice(-3);
+    // Son 5 kelimeyi al — çok kelimeli keyword'ler için (3-gram + buffer)
+    const recentWords = words.slice(-5);
     if (recentWords.length === 0) return;
 
     const matches = matcherRef.current.match(recentWords, threshold);
     if (matches.length === 0) return;
 
-    // En yüksek skoru olan eşleşmeyi bul
-    const topMatch = matches.reduce((best, m) => m.score > best.score ? m : best, matches[0]);
+    // En yüksek skoru olan eşleşmeyi bul (zaten sıralı geldi)
+    const topMatch = matches[0];
 
     // Prezi modu: en iyi görsel tek odaklanma hedefi
     if (topMatch.imageIds.length > 0) {
