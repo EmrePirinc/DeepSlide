@@ -89,6 +89,18 @@ export default function PresentationEditorPage({
     return () => clearTimeout(timer);
   }, [slides]);
 
+  // F5 kısayolu → Sunumu başlat
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'F5' && currentPresentation && currentPresentation.images.length > 0) {
+        e.preventDefault();
+        router.push(`/presentation/${currentPresentation.id}/present`);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [currentPresentation, router]);
+
   // ─── Hesaplamalar ───────────────────────────
   const editorColumnCount = currentPresentation?.settings.columnCount ?? 4;
   const analysisLang = currentPresentation?.settings.analysisLanguage ?? 'tr';
@@ -154,15 +166,37 @@ export default function PresentationEditorPage({
                 </button>
               </nav>
 
-              <AnalyzeButton
-                pendingCount={pendingCount}
-                completedCount={completedCount}
-                totalCount={currentPresentation.images.length}
-                isAnalyzing={isAnalyzing}
-                onStart={() => startAnalysis(selectedImageProvider, analysisLang, ollamaModel)}
-                onStop={stopAnalysis}
-                onReanalyze={() => reanalyzeAll(selectedImageProvider, analysisLang, ollamaModel)}
-              />
+              {/* Sağ Grup: AI Analiz + Sunumu Başlat (Canva/Figma standardı — sağ üst köşe) */}
+              <div className="flex items-center gap-2">
+                <AnalyzeButton
+                  pendingCount={pendingCount}
+                  completedCount={completedCount}
+                  totalCount={currentPresentation.images.length}
+                  isAnalyzing={isAnalyzing}
+                  onStart={() => startAnalysis(selectedImageProvider, analysisLang, ollamaModel)}
+                  onStop={stopAnalysis}
+                  onReanalyze={() => reanalyzeAll(selectedImageProvider, analysisLang, ollamaModel)}
+                />
+                {currentPresentation.images.length > 0 ? (
+                  <button
+                    onClick={() => router.push(`/presentation/${currentPresentation.id}/present`)}
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary hover:bg-primary-container text-white text-xs font-black uppercase tracking-wider shadow-xl shadow-primary/30 active:scale-95 transition-all"
+                    title="Sunumu Başlat (F5)"
+                  >
+                    <MaterialIcon icon="play_arrow" size={18} />
+                    Sunumu Başlat
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white/5 text-on-surface-variant/40 text-xs font-black uppercase tracking-wider cursor-not-allowed"
+                    title="Önce görsel yükleyin"
+                  >
+                    <MaterialIcon icon="play_arrow" size={18} />
+                    Sunumu Başlat
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* İçerik */}
