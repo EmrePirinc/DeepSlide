@@ -11,10 +11,11 @@ import { parseAnalysisResponse } from '@/lib/ai/parser';
 // 2. gemini-2.5-flash-lite    → çok hızlı, yüksek kota (15 RPM free)
 // 3. gemini-2.5-flash         → kaliteli ama yavaş
 // 4. gemini-1.5-flash         → son çare fallback
+// NOT: gemini-2.0-flash yeni kullanıcılara kapatıldı (404) — çıkarıldı
 const MODEL_FALLBACK_CHAIN = [
-  'gemini-2.0-flash',                      // En hızlı
   'gemini-2.5-flash-lite',                 // Hızlı + yüksek kota
   'gemini-2.5-flash',                      // Kaliteli fallback
+  'gemini-flash-latest',                   // Google'ın latest alias'ı
   'gemini-1.5-flash',                      // Son çare
 ];
 
@@ -77,6 +78,21 @@ function isRateLimitError(error: unknown): boolean {
   return e?.status === 429;
 }
 
+/** Model mevcut değil / erişim yok — fallback chain'de sıradakine geç */
+function isModelUnavailableError(error: unknown): boolean {
+  const e = error as { status?: number; message?: string };
+  if (e?.status === 404 || e?.status === 403) return true;
+  if (error instanceof Error) {
+    return (
+      error.message.includes('no longer available') ||
+      error.message.includes('NOT_FOUND') ||
+      error.message.includes('not found') ||
+      error.message.includes('PERMISSION_DENIED')
+    );
+  }
+  return false;
+}
+
 export async function POST(request: NextRequest) {
   try {
     const apiKey = process.env.GEMINI_API_KEY;
@@ -112,6 +128,10 @@ export async function POST(request: NextRequest) {
         lastError = err;
         if (isRateLimitError(err)) {
           console.warn(`[analyze] ${model} → 429, sıradaki modele geçiliyor...`);
+          continue;
+        }
+        if (isModelUnavailableError(err)) {
+          console.warn(`[analyze] ${model} → mevcut değil (404/403), sıradaki modele geçiliyor...`);
           continue;
         }
         throw err;
