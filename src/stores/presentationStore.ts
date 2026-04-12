@@ -14,6 +14,7 @@ import {
   listPresentations,
   createPresentation as dbCreate,
   deletePresentation as dbDelete,
+  clonePresentation as dbClone,
 } from '@/lib/db/presentations';
 
 interface PresentationState {
@@ -30,6 +31,7 @@ interface PresentationState {
   loadPresentation: (id: string) => Promise<void>;
   createPresentation: (title: string, description?: string) => Promise<string>;
   deletePresentation: (id: string) => Promise<void>;
+  clonePresentation: (id: string) => Promise<void>;
   updateSettings: (settings: Partial<PresentationSettings>) => Promise<void>;
 
   // Image management
@@ -104,6 +106,11 @@ export const usePresentationStore = create<PresentationState>((set, get) => ({
       currentPresentation:
         state.currentPresentation?.id === id ? null : state.currentPresentation,
     }));
+  },
+
+  clonePresentation: async (id: string) => {
+    const cloned = await dbClone(id);
+    set((state) => ({ presentations: [cloned, ...state.presentations] }));
   },
 
   updateSettings: async (settings: Partial<PresentationSettings>) => {

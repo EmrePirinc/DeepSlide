@@ -35,7 +35,7 @@ export function useAIAnalysis() {
   }, []);
 
   const startAnalysis = useCallback(
-    async (providerType: AIProviderType, language: string = 'tr') => {
+    async (providerType: AIProviderType, language: string = 'tr', ollamaModel?: string) => {
       if (!currentPresentation) return;
 
       const pendingImages = currentPresentation.images.filter(
@@ -80,7 +80,7 @@ export function useAIAnalysis() {
         }
       };
 
-      await analyzeBatch(pendingImages, providerType, handleProgress, language, () => abortRef.current);
+      await analyzeBatch(pendingImages, providerType, handleProgress, language, () => abortRef.current, ollamaModel);
 
       setState((prev) => ({ ...prev, isAnalyzing: false }));
     },
@@ -88,7 +88,7 @@ export function useAIAnalysis() {
   );
 
   const retryFailed = useCallback(
-    async (providerType: AIProviderType, language: string = 'tr') => {
+    async (providerType: AIProviderType, language: string = 'tr', ollamaModel?: string) => {
       if (!currentPresentation) return;
 
       const failedImages = currentPresentation.images.filter(
@@ -102,13 +102,13 @@ export function useAIAnalysis() {
         });
       }
 
-      await startAnalysis(providerType, language);
+      await startAnalysis(providerType, language, ollamaModel);
     },
     [currentPresentation, updateImage, startAnalysis]
   );
 
   const reanalyzeAll = useCallback(
-    async (providerType: AIProviderType, language: string = 'tr') => {
+    async (providerType: AIProviderType, language: string = 'tr', ollamaModel?: string) => {
       if (!currentPresentation) return;
 
       for (const img of currentPresentation.images) {
@@ -119,7 +119,7 @@ export function useAIAnalysis() {
         });
       }
 
-      await startAnalysis(providerType, language);
+      await startAnalysis(providerType, language, ollamaModel);
     },
     [currentPresentation, updateImage, startAnalysis]
   );

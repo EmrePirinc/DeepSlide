@@ -189,6 +189,19 @@ export default function ProfilePage() {
           </div>
         </Card>
 
+        {/* Yıllık Rapor */}
+        <Card className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-semibold">Yıllık Konuşmacı Raporu</h3>
+              <p className="text-xs text-muted-foreground mt-0.5">Yılın sunum istatistiklerin, bir bakışta.</p>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => router.push('/profile/wrapped')}>
+              🎉 Raporu Gör
+            </Button>
+          </div>
+        </Card>
+
         {/* Footer links */}
         <div className="flex justify-center gap-4 text-xs text-muted-foreground pb-8">
           <a href="/privacy" className="hover:underline">Gizlilik Politikasi</a>

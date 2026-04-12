@@ -3,6 +3,7 @@
 
 'use client';
 
+import { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 
 export type UploadStatus = 'uploading' | 'done' | 'error';
@@ -15,6 +16,28 @@ interface UploadProgressProps {
 }
 
 export function UploadProgress({ progress, status, shareUrl, onRetry }: UploadProgressProps) {
+  const [copied, setCopied] = useState(false);
+
+  // Auto-copy link to clipboard when upload completes
+  useEffect(() => {
+    if (status !== 'done' || !shareUrl) return;
+    const fullUrl = shareUrl.startsWith('http') ? shareUrl : `${window.location.origin}${shareUrl}`;
+    navigator.clipboard.writeText(fullUrl)
+      .then(() => setCopied(true))
+      .catch(() => {
+        // Clipboard API not available (non-HTTPS or permission denied) — show manual button
+        setCopied(false);
+      });
+  }, [status, shareUrl]);
+
+  const handleManualCopy = () => {
+    if (!shareUrl) return;
+    const fullUrl = shareUrl.startsWith('http') ? shareUrl : `${window.location.origin}${shareUrl}`;
+    navigator.clipboard.writeText(fullUrl)
+      .then(() => setCopied(true))
+      .catch(() => {});
+  };
+
   return (
     <div className="flex flex-col gap-2 rounded-xl bg-white/10 p-4 backdrop-blur-sm">
       {status === 'uploading' && (
@@ -34,16 +57,20 @@ export function UploadProgress({ progress, status, shareUrl, onRetry }: UploadPr
 
       {status === 'done' && (
         <div className="flex items-center gap-3">
-          <span className="text-sm text-green-300">✓ Yükleme tamamlandı</span>
-          {shareUrl && (
-            <button
-              onClick={() => {
-                navigator.clipboard.writeText(window.location.origin + shareUrl);
-              }}
-              className="ml-auto rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-400"
-            >
-              Linki Kopyala
-            </button>
+          {copied ? (
+            <span className="text-sm text-green-300">✓ Link Kopyalandı</span>
+          ) : (
+            <>
+              <span className="text-sm text-green-300">✓ Yükleme tamamlandı</span>
+              {shareUrl && (
+                <button
+                  onClick={handleManualCopy}
+                  className="ml-auto rounded-lg bg-blue-500 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-400"
+                >
+                  Linki Kopyala
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

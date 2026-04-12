@@ -58,14 +58,9 @@ export const IMAGE_PROVIDER_OPTIONS = [
     description: 'Gemini 2.5 Flash — Hızlı ve uygun maliyetli görsel analiz',
   },
   {
-    value: 'qwen' as AIProviderType,
-    label: 'Qwen 3.5 (Yerel)',
-    description: 'Qwen3.5 9B — Ollama ile yerel çalışır. Sınırsız, ücretsiz, rate limit yok.',
-  },
-  {
-    value: 'gemma' as AIProviderType,
-    label: 'Gemma 4 (Yerel)',
-    description: 'Google Gemma4 E2B — Ollama ile yerel, hızlı ve multimodal.',
+    value: 'ollama' as AIProviderType,
+    label: 'Local AI (Ollama)',
+    description: 'Bilgisayarında çalışır — internet gerektirmez, ücretsiz',
   },
 ];
 

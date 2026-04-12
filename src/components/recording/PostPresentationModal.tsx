@@ -226,6 +226,45 @@ export function PostPresentationModal({
           </section>
         )}
 
+        {/* Viral Rozet — Sosyal Paylaşım */}
+        {uploadStatus === 'done' && shareUrl && (
+          <section className="rounded-xl bg-white/5 p-4 flex flex-col gap-3">
+            <span className="text-sm font-medium text-white">Paylaş</span>
+            <div className="flex gap-2 flex-wrap">
+              {[
+                {
+                  label: 'LinkedIn',
+                  icon: '💼',
+                  color: 'bg-[#0077B5]',
+                  url: () => `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin + shareUrl : shareUrl)}`,
+                },
+                {
+                  label: 'X (Twitter)',
+                  icon: '🐦',
+                  color: 'bg-black border border-white/20',
+                  url: () => `https://x.com/intent/tweet?text=${encodeURIComponent(`DeepSlide ile hazırladığım sunumu izle 🎯`)}&url=${encodeURIComponent(typeof window !== 'undefined' ? window.location.origin + shareUrl : shareUrl)}`,
+                },
+                {
+                  label: 'WhatsApp',
+                  icon: '💬',
+                  color: 'bg-[#25D366]',
+                  url: () => `https://wa.me/?text=${encodeURIComponent(`Sunumumu izle: ${typeof window !== 'undefined' ? window.location.origin + shareUrl : shareUrl}`)}`,
+                },
+              ].map((s) => (
+                <a
+                  key={s.label}
+                  href={s.url()}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium text-white transition hover:opacity-80 ${s.color}`}
+                >
+                  <span>{s.icon}</span> {s.label}
+                </a>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Bitti butonu */}
         <button
           onClick={onClose}

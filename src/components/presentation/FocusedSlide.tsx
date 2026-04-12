@@ -50,12 +50,32 @@ export function FocusedSlide({
           transition={{ type: 'spring', stiffness: 200, damping: 30 }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={imageSrc}
-            alt={image.fileName}
-            className="max-w-full max-h-full object-contain"
-            style={{ maxHeight: '85vh' }}
-          />
+          <div className="relative inline-flex items-center justify-center" style={{ maxHeight: '85vh' }}>
+            <img
+              src={imageSrc}
+              alt={image.fileName}
+              className="max-w-full max-h-full object-contain"
+              style={{ maxHeight: '85vh' }}
+            />
+            {/* Text Overlays — Faz 3 */}
+            {(image.textOverlays ?? []).map((overlay) => (
+              <span
+                key={overlay.id}
+                className="absolute pointer-events-none select-none"
+                style={{
+                  left: `${overlay.x}%`,
+                  top: `${overlay.y}%`,
+                  fontSize: `${overlay.fontSize}px`,
+                  color: overlay.color,
+                  fontWeight: overlay.bold ? 700 : 400,
+                  textShadow: '0 2px 8px rgba(0,0,0,0.9)',
+                  whiteSpace: 'pre-wrap',
+                }}
+              >
+                {overlay.text}
+              </span>
+            ))}
+          </div>
 
           <SlideInfoOverlay
             image={image}

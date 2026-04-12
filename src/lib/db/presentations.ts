@@ -4,6 +4,7 @@
 import { getDB } from './index';
 import type { Presentation } from '@/types/presentation';
 import { DEFAULT_SETTINGS } from '@/types/presentation';
+import { deleteNotesForPresentation } from './notes';
 
 export async function createPresentation(
   title: string,
@@ -55,4 +56,31 @@ export async function deletePresentation(id: string): Promise<void> {
     await blobStore.delete(key);
   }
   await tx.done;
+  // Clean up associated notes
+  await deleteNotesForPresentation(id);
+}
+
+export async function clonePresentation(id: string): Promise<Presentation> {
+  const db = await getDB();
+  const original = await db.get('presentations', id);
+  if (!original) throw new Error('Sunum bulunamadı');
+  const now = Date.now();
+  const cloned: Presentation = {
+    ...original,
+    id: crypto.randomUUID(),
+    title: `${original.title} — Kopya`,
+    folderId: null,
+    createdAt: now,
+    updatedAt: now,
+    // images reference same blobKeys — no storage copy needed
+    images: original.images.map((img) => ({ ...img, presentationId: crypto.randomUUID() })),
+  };
+  // Fix presentationId on each image
+  const newId = cloned.id;
+  cloned.images = original.images.map((img) => ({
+    ...img,
+    presentationId: newId,
+  }));
+  await db.put('presentations', cloned);
+  return cloned;
 }

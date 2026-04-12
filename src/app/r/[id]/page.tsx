@@ -71,7 +71,7 @@ export default async function RecordingPortalPage({
           )}
         </div>
 
-        <div className="mt-4 flex gap-3">
+        <div className="mt-4 flex flex-wrap gap-3">
           <a
             href={recording.signedUrl}
             download
@@ -79,6 +79,35 @@ export default async function RecordingPortalPage({
           >
             İndir
           </a>
+
+          {/* Viral Rozet — sosyal paylaşım butonları */}
+          {[
+            {
+              label: 'LinkedIn',
+              color: 'bg-[#0077B5]',
+              href: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(`${process.env.NEXT_PUBLIC_BASE_URL ?? ''}/r/${id}`)}`,
+            },
+            {
+              label: 'X',
+              color: 'bg-black border border-white/20',
+              href: `https://x.com/intent/tweet?text=${encodeURIComponent('DeepSlide ile hazırladığım sunumu izle 🎯')}&url=${encodeURIComponent(`${process.env.NEXT_PUBLIC_BASE_URL ?? ''}/r/${id}`)}`,
+            },
+            {
+              label: 'WhatsApp',
+              color: 'bg-[#25D366]',
+              href: `https://wa.me/?text=${encodeURIComponent(`Sunumumu izle: ${process.env.NEXT_PUBLIC_BASE_URL ?? ''}/r/${id}`)}`,
+            },
+          ].map((s) => (
+            <a
+              key={s.label}
+              href={s.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`rounded-xl px-4 py-2.5 text-sm font-medium text-white hover:opacity-80 transition ${s.color}`}
+            >
+              {s.label}&apos;da Paylaş
+            </a>
+          ))}
         </div>
       </div>
     </main>

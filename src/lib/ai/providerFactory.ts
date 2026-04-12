@@ -9,12 +9,20 @@ class ClientAnalysisProvider implements ImageAnalysisProvider {
   private endpoint: string;
   private language: string;
   private keywordCount: number;
+  private extraBody: Record<string, string>;
 
-  constructor(name: string, endpoint: string, language: string = 'tr', keywordCount: number = 3) {
+  constructor(
+    name: string,
+    endpoint: string,
+    language: string = 'tr',
+    keywordCount: number = 3,
+    extraBody: Record<string, string> = {}
+  ) {
     this.name = name;
     this.endpoint = endpoint;
     this.language = language;
     this.keywordCount = keywordCount;
+    this.extraBody = extraBody;
   }
 
   async analyzeImage(imageBase64: string, mimeType: string) {
@@ -29,6 +37,7 @@ class ClientAnalysisProvider implements ImageAnalysisProvider {
         mimeType,
         language: this.language,
         keywordCount: this.keywordCount,
+        ...this.extraBody,
       }),
       signal: controller.signal,
     });
@@ -43,18 +52,23 @@ class ClientAnalysisProvider implements ImageAnalysisProvider {
   }
 }
 
+
 export function createAnalysisProvider(
   provider: AIProviderType,
   language: string = 'tr',
-  keywordCount: number = 3
+  keywordCount: number = 3,
+  ollamaModel?: string
 ): ImageAnalysisProvider {
   switch (provider) {
+    case 'ollama':
+      return new ClientAnalysisProvider(
+        'Ollama',
+        '/api/analyze-ollama',
+        language,
+        keywordCount,
+        { model: ollamaModel ?? 'gemma4:e2b-it-q4_K_M' }
+      );
     case 'gemini':
-      return new ClientAnalysisProvider('Gemini', '/api/analyze', language, keywordCount);
-    case 'qwen':
-      return new ClientAnalysisProvider('Qwen', '/api/analyze-qwen', language, keywordCount);
-    case 'gemma':
-      return new ClientAnalysisProvider('Gemma4', '/api/analyze-gemma', language, keywordCount);
     default:
       return new ClientAnalysisProvider('Gemini', '/api/analyze', language, keywordCount);
   }
