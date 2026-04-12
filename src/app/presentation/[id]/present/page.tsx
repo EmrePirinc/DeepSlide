@@ -38,7 +38,6 @@ import { useSpeechPaywall } from '@/hooks/useSpeechPaywall';
 import { getTheme } from '@/lib/themes/presets';
 import type { ThemeId } from '@/lib/themes/types';
 import { QRShareOverlay } from '@/components/presentation/QRShareOverlay';
-import { PrePresentationCheck } from '@/components/presentation/PrePresentationCheck';
 import { useAnalyticsStore } from '@/stores/analyticsStore';
 import { saveSession } from '@/lib/db/analytics';
 
@@ -66,7 +65,6 @@ export default function PresentationModePage({
 
   const [mode, setMode] = useState<PresentMode>('cover');
   const [lastFocusedId, setLastFocusedId] = useState<string | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // UI state
@@ -78,7 +76,6 @@ export default function PresentationModePage({
   const [subtitleEnabled, setSubtitleEnabled] = useState(false);
   const [subtitleLang, setSubtitleLang] = useState<SubtitleLanguage>('tr');
   const [showQR, setShowQR] = useState(false);
-  const [showPreCheck, setShowPreCheck] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
   const [passwordUnlocked, setPasswordUnlocked] = useState(false);
@@ -91,7 +88,6 @@ export default function PresentationModePage({
   const settings = currentPresentation?.settings;
   const theme = getTheme((settings?.selectedTheme ?? 'dark') as ThemeId);
   const matchThreshold = settings?.matchThreshold ?? 0.7;
-  const overviewTimeout = (settings?.overviewReturnTimeout ?? 10) * 1000;
 
   // Recording integration
   const {
@@ -148,76 +144,39 @@ export default function PresentationModePage({
     }
   }, [settings, startSpeech]);
 
-  // Kapaktan çık → önce pre-check göster (keyword'leri varsa)
+  // Kapaktan çık → direkt overview
   const handleCoverContinue = useCallback(() => {
-    const hasKeywords = currentPresentation?.images.some((img) => img.keywords.length > 0);
-    if (hasKeywords && currentPresentation?.images.length) {
-      setShowPreCheck(true);
-    } else {
-      startOverview();
-    }
-  }, [currentPresentation, startOverview]);
+    startOverview();
+  }, [startOverview]);
 
-  // Overview dönüş timeout'u yönet
-  const resetOverviewTimeout = useCallback(() => {
-    if (timeoutRef.current) clearTimeout(timeoutRef.current);
-    timeoutRef.current = setTimeout(() => {
-      setMode('overview');
-      setFocusedImage(null);
-    }, overviewTimeout);
-  }, [overviewTimeout, setFocusedImage]);
+  // Görsele manuel odaklan (navigasyon, tıklama) — sesle değil
+  const focusOnImage = useCallback((imageId: string) => {
+    setFocusedImage(imageId);
+    setLastFocusedId(imageId);
+    setMode('focused');
+  }, [setFocusedImage]);
 
-  // Görsele odaklan — exact match anında, fuzzy match kısa debounce
-  const focusOnImage = useCallback((imageId: string, isExactMatch: boolean = false) => {
-    if (debounceRef.current) clearTimeout(debounceRef.current);
-
-    const delay = isExactMatch
-      ? 0
-      : mode === 'overview' ? 200 : 500;
-
-    if (delay === 0) {
-      setFocusedImage(imageId);
-      setLastFocusedId(imageId);
-      setMode('focused');
-      resetOverviewTimeout();
-    } else {
-      debounceRef.current = setTimeout(() => {
-        setFocusedImage(imageId);
-        setLastFocusedId(imageId);
-        setMode('focused');
-        resetOverviewTimeout();
-      }, delay);
-    }
-  }, [setFocusedImage, resetOverviewTimeout, mode]);
-
-  // Keyword eşleşme → focus tetikle
+  // useKeywordMatch store'daki focusedImageId'yi değiştirir; local `mode`'u senkronize et.
+  // Sesle bir görsel tetiklenirse otomatik olarak 'focused' mode'a geç.
   useEffect(() => {
     if (mode === 'cover' || isPaused) return;
-    if (matches.length === 0) return;
-
-    const topMatch = matches[0];
-    if (topMatch.imageIds.length > 0) {
-      const targetId = topMatch.imageIds[0];
-      const isExact = topMatch.score === 1.0;
-      if (targetId !== focusedImageId) {
-        focusOnImage(targetId, isExact);
-      } else {
-        resetOverviewTimeout();
-      }
+    if (focusedImageId && mode === 'overview') {
+      setMode('focused');
+      setLastFocusedId(focusedImageId);
     }
-  }, [matches, mode, isPaused, focusedImageId, focusOnImage, resetOverviewTimeout]);
+  }, [focusedImageId, mode, isPaused]);
 
   // İleri/geri navigasyon
   const goNext = useCallback(() => {
     if (!currentPresentation) return;
     const imgs = currentPresentation.images;
     if (mode === 'overview') {
-      if (imgs.length > 0) focusOnImage(imgs[0].id, true);
+      if (imgs.length > 0) focusOnImage(imgs[0].id);
       return;
     }
     const idx = imgs.findIndex((img) => img.id === focusedImageId);
     if (idx < imgs.length - 1) {
-      focusOnImage(imgs[idx + 1].id, true);
+      focusOnImage(imgs[idx + 1].id);
     }
   }, [currentPresentation, mode, focusedImageId, focusOnImage]);
 
@@ -226,7 +185,7 @@ export default function PresentationModePage({
     const imgs = currentPresentation.images;
     const idx = imgs.findIndex((img) => img.id === focusedImageId);
     if (idx > 0) {
-      focusOnImage(imgs[idx - 1].id, true);
+      focusOnImage(imgs[idx - 1].id);
     } else {
       setMode('overview');
       setFocusedImage(null);
@@ -373,7 +332,6 @@ export default function PresentationModePage({
   // Cleanup
   useEffect(() => {
     return () => {
-      if (timeoutRef.current) clearTimeout(timeoutRef.current);
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
   }, []);
@@ -745,21 +703,6 @@ export default function PresentationModePage({
         onClose={() => setShowQR(false)}
       />
 
-      {/* Pre-Presentation Check */}
-      {showPreCheck && currentPresentation && (
-        <PrePresentationCheck
-          images={currentPresentation.images}
-          presentationId={id}
-          onStart={() => {
-            setShowPreCheck(false);
-            startOverview();
-          }}
-          onSkip={() => {
-            setShowPreCheck(false);
-            startOverview();
-          }}
-        />
-      )}
     </div>
   );
 }
