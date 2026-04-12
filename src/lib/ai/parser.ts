@@ -46,15 +46,37 @@ export function parseAnalysisResponse(raw: string): AnalysisResult {
       (kw: Record<string, unknown>) =>
         typeof kw.text === 'string' && kw.text.length > 0
     )
-    .map((kw: Record<string, unknown>) => ({
-      text: String(kw.text).toLowerCase().trim(),
-      confidence: typeof kw.confidence === 'number'
-        ? Math.max(0, Math.min(1, kw.confidence))
-        : 0.5,
-      category: VALID_CATEGORIES.includes(kw.category as typeof VALID_CATEGORIES[number])
-        ? (kw.category as typeof VALID_CATEGORIES[number])
-        : 'concept',
-    }))
+    .map((kw: Record<string, unknown>) => {
+      // Synonyms + forms için string array parse
+      const synonyms = Array.isArray(kw.synonyms)
+        ? (kw.synonyms as unknown[])
+            .filter((s): s is string => typeof s === 'string' && s.length > 0)
+            .map((s) => s.toLowerCase().trim())
+            .slice(0, 5)
+        : undefined;
+      const forms = Array.isArray(kw.forms)
+        ? (kw.forms as unknown[])
+            .filter((s): s is string => typeof s === 'string' && s.length > 0)
+            .map((s) => s.toLowerCase().trim())
+            .slice(0, 8)
+        : undefined;
+      const confusability = typeof kw.confusability === 'number'
+        ? Math.max(0, Math.min(1, kw.confusability))
+        : undefined;
+
+      return {
+        text: String(kw.text).toLowerCase().trim(),
+        confidence: typeof kw.confidence === 'number'
+          ? Math.max(0, Math.min(1, kw.confidence))
+          : 0.5,
+        category: VALID_CATEGORIES.includes(kw.category as typeof VALID_CATEGORIES[number])
+          ? (kw.category as typeof VALID_CATEGORIES[number])
+          : 'concept',
+        synonyms,
+        forms,
+        confusability,
+      } satisfies AnalyzedKeyword;
+    })
     .slice(0, 15);
 
   if (keywords.length < 1) {

@@ -31,11 +31,14 @@ export function useSpeechRecognition() {
       providerRef.current = provider;
 
       provider.onTranscript = (result) => {
+        // Confidence'ı store'a geçir — useKeywordMatch dinamik threshold için kullanır.
+        // Bazı provider'lar confidence vermez (0 döner); 0'ı yüksek (1) olarak varsay.
+        const confidence = result.confidence > 0 ? result.confidence : 1;
         if (result.isFinal) {
-          setTranscript(result.text);
-          setInterimTranscript('');
+          setTranscript(result.text, confidence);
+          setInterimTranscript('', confidence);
         } else {
-          setInterimTranscript(result.text);
+          setInterimTranscript(result.text, confidence);
         }
       };
 

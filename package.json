@@ -33,8 +33,10 @@
     "react-dropzone": "^15.0.0",
     "react-virtuoso": "^4.18.4",
     "shadcn": "^4.1.2",
+    "snowball-stemmer.jsx": "^0.2.3",
     "stripe": "^22.0.0",
     "tailwind-merge": "^3.5.0",
+    "talisman": "^1.1.4",
     "tw-animate-css": "^1.4.0",
     "zustand": "^5.0.12"
   },

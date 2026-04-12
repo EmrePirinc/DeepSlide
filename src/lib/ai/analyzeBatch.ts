@@ -122,6 +122,8 @@ export function analysisResultToKeywords(result: AnalysisResult): Keyword[] {
     confidence: kw.confidence,
     category: kw.category,
     isUserEdited: false,
-    synonyms: [],
+    synonyms: kw.synonyms ?? [],
+    forms: kw.forms,
+    confusability: kw.confusability,
   }));
 }

@@ -20,7 +20,7 @@ export function useKeywordMatch(threshold: number = 0.7) {
   const orchestratorRef = useRef(new AnimationOrchestrator());
   const lastPhraseRef = useRef<string>('');
 
-  const { interimTranscript, transcript } = useSpeechStore();
+  const { interimTranscript, transcript, interimConfidence } = useSpeechStore();
   const { currentPresentation, setActiveImages, setFocusedImage, setViewMode } = usePresentationStore();
 
   // Keyword index'i oluştur (presentation değiştiğinde)
@@ -65,7 +65,12 @@ export function useKeywordMatch(threshold: number = 0.7) {
     if (phrase === lastPhraseRef.current) return;
     lastPhraseRef.current = phrase;
 
-    const matches = matcherRef.current.match(recentWords, threshold);
+    // Confidence fusion: ASR belirsizse threshold'u dinamik yükselt.
+    // <0.5 confidence → +0.08 (gold set'ten kalibre edilecek değer)
+    const effectiveThreshold =
+      interimConfidence < 0.5 ? threshold + 0.08 : threshold;
+
+    const matches = matcherRef.current.match(recentWords, effectiveThreshold);
     if (matches.length === 0) return;
 
     // En yüksek skoru olan eşleşmeyi bul (zaten sıralı geldi)
@@ -81,7 +86,7 @@ export function useKeywordMatch(threshold: number = 0.7) {
     }
 
     useSpeechStore.getState().setMatches(matches);
-  }, [interimTranscript, transcript, threshold]);
+  }, [interimTranscript, transcript, threshold, interimConfidence]);
 
   const resetMatch = useCallback(() => {
     orchestratorRef.current.reset();

@@ -12,6 +12,23 @@ export interface AnalyzedKeyword {
   text: string;
   confidence: number;
   category: KeywordCategory;
+  /**
+   * Eş anlamlı alternatifler (Gemini prompt ile iste).
+   * Örnek: "patika" → ["yürüyüş yolu", "keçi yolu"]
+   */
+  synonyms?: string[];
+  /**
+   * Türkçe ek varyasyonları — kullanıcının söyleyebileceği formlar.
+   * Örnek: "yol" → ["yolu", "yolda", "yoluna", "yollar", "yolları"]
+   */
+  forms?: string[];
+  /**
+   * 0-1, başka benzer sesli Türkçe kelimeyle karışma olasılığı.
+   * Match threshold dinamik olarak bu değere göre yükseltilir.
+   * Yüksek örnekler: "sis" (siz), "bal" (bel), "kar" (kır) → ~0.85
+   * Düşük: "yürüyüş yolu", "bulut"                         → ~0.2
+   */
+  confusability?: number;
 }
 
 export interface ImageAnalysisProvider {

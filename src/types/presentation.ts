@@ -48,6 +48,20 @@ export interface Keyword {
   category?: KeywordCategory;
   isUserEdited: boolean;
   synonyms: string[];
+  /**
+   * Türkçe ek varyasyonları — Gemini'nin ürettiği, kullanıcının söyleyebileceği
+   * ek almış formlar: "yolu", "yolunda", "yoluna", "yolları" gibi.
+   * Keyword matcher bu formları da index'e ekler.
+   */
+  forms?: string[];
+  /**
+   * Başka benzer sesli bir Türkçe kelimeye karışma olasılığı (0-1).
+   * Gemini her keyword için değerlendirir:
+   *   - Yüksek örnekler: "sis" (siz), "bal" (bel), "kar" (kır) → ~0.85
+   *   - Düşük örnekler: "yürüyüş yolu", "bulut", "dağ"       → ~0.2
+   * Match threshold bu değere göre dinamik olarak yükseltilir.
+   */
+  confusability?: number;
 }
 
 export type KeywordCategory =
