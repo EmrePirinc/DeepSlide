@@ -11,20 +11,26 @@ import { AhoCorasickAutomaton } from '@/lib/speech/ahoCorasick';
 /**
  * Ses → görsel eşleştirme motoru (MVP).
  *
- * Tasarım kararları (plan: mutable-meandering-karp.md):
- *   1. Sadece FINAL transcript dinler — interim gürültüsü yok, flicker sıfır
- *   2. Aho-Corasick O(n) multi-pattern match — yüzlerce keyword'ü aynı anda tarar
+ * Tasarım kararları:
+ *   1. FINAL transcript + INTERIM DEBOUNCE — final gelirse anında, interim
+ *      400ms durursa (kullanıcı bir kelime bitirdi kabul) kendiliğinden tetik
+ *   2. Aho-Corasick O(n) multi-pattern match — yüzlerce keyword'ü tek tarama
  *   3. Light Turkish suffix stripping — yolu/yolunda/yolları → yol
- *   4. Asciify diacritic — yürüyüş ↔ yuruyus her iki yönde eşleşir
- *   5. Negatives O(1) HashSet — sis/siz homofon false-positive'ini keser
+ *   4. Asciify diacritic — yürüyüş ↔ yuruyus her iki yönde
+ *   5. Negatives O(1) HashSet — sis/siz homofon koruması
  *   6. Longest match wins — multi-word keyword'lerde en spesifik kazanır
  *   7. Match miss → eski focus KORUNUR (overview'e düşmez)
  *   8. Same-image 500ms debounce — WebSpeech restart repetition koruması
  *
- * Sıfır harici NPM bağımlılığı, ~320 satır toplam (NLP + Aho-Corasick + hook).
+ * WebSpeech davranışı: kullanıcı durmadıkça `isFinal=true` gelmez. Bu yüzden
+ * interim'i de dinliyoruz. Gürültü koruması: 400ms idle süresi + same-image
+ * debounce. Yani "sahte interim" değişiklikleri 400ms içinde tetik atamaz.
+ *
+ * Sıfır harici NPM bağımlılığı.
  */
 
 const SAME_IMAGE_DEBOUNCE_MS = 500;
+const INTERIM_IDLE_MS = 400;
 
 export function useKeywordMatch(_threshold: number = 0.7) {
   // threshold MVP'de kullanılmıyor — Aho-Corasick exact string match, skor yok.
@@ -34,6 +40,7 @@ export function useKeywordMatch(_threshold: number = 0.7) {
 
   // Store subscription — selective, gereksiz re-render yok
   const transcript = useSpeechStore((s) => s.transcript);
+  const interimTranscript = useSpeechStore((s) => s.interimTranscript);
   const currentPresentation = usePresentationStore((s) => s.currentPresentation);
   const setFocusedImage = usePresentationStore((s) => s.setFocusedImage);
 
@@ -41,7 +48,8 @@ export function useKeywordMatch(_threshold: number = 0.7) {
   const automatonRef = useRef<AhoCorasickAutomaton | null>(null);
   const negativesRef = useRef<Set<string>>(new Set());
   const lastFocusRef = useRef<{ imageId: string; at: number } | null>(null);
-  const lastTranscriptRef = useRef<string>('');
+  const lastInputRef = useRef<string>('');
+  const interimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ==========================================================================
   // 1. buildIndex — sunum yüklenince Aho-Corasick otomatını kur
@@ -99,17 +107,17 @@ export function useKeywordMatch(_threshold: number = 0.7) {
   }, [currentPresentation?.images]);
 
   // ==========================================================================
-  // 2. Match effect — SADECE final transcript, interim dinlenmez
+  // 2. Core match runner — paylaşılan (final + interim-debounce)
   // ==========================================================================
-  useEffect(() => {
-    if (!transcript || !automatonRef.current) return;
+  const runMatch = useCallback((input: string) => {
+    if (!input || !automatonRef.current) return;
 
-    // Aynı transcript tekrar gelmişse atla (WebSpeech bazen final'i tekrarlar)
-    if (transcript === lastTranscriptRef.current) return;
-    lastTranscriptRef.current = transcript;
+    // Aynı input tekrar gelmişse atla (WebSpeech repetition koruması)
+    if (input === lastInputRef.current) return;
+    lastInputRef.current = input;
 
     // Normalize + tokenize
-    const normalized = normalizeAndAsciify(transcript);
+    const normalized = normalizeAndAsciify(input);
     if (!normalized) return;
 
     const tokens = normalized.split(' ').filter(Boolean);
@@ -117,9 +125,7 @@ export function useKeywordMatch(_threshold: number = 0.7) {
 
     // Negative check — cümlede herhangi bir negative token varsa match iptal
     for (const token of tokens) {
-      if (negativesRef.current.has(token)) {
-        return;
-      }
+      if (negativesRef.current.has(token)) return;
     }
 
     // Stem her tokeni, boşlukla birleştir → Aho-Corasick üzerinde tara
@@ -127,13 +133,11 @@ export function useKeywordMatch(_threshold: number = 0.7) {
 
     const matches = automatonRef.current.search(stemmedText);
     if (matches.length === 0) {
-      // Miss → eski focus KORUNUR, setFocusedImage çağrılmaz
+      // Miss → eski focus KORUNUR
       return;
     }
 
-    // En uzun (= en spesifik) match kazanır
-    // Eğer eşit uzunlukta birden fazla varsa text'te daha geç biten kazanır
-    // (kullanıcının en son söylediği keyword daha relevant varsayımı)
+    // Longest patternLength + en geç endIndex kazanır
     let best = matches[0];
     for (const m of matches) {
       if (m.patternLength > best.patternLength) {
@@ -143,7 +147,7 @@ export function useKeywordMatch(_threshold: number = 0.7) {
       }
     }
 
-    // Same-image debounce — aynı image'a 500ms içinde tekrar çağrılmaz
+    // Same-image debounce
     const now = Date.now();
     const last = lastFocusRef.current;
     if (last && last.imageId === best.imageId && now - last.at < SAME_IMAGE_DEBOUNCE_MS) {
@@ -152,15 +156,58 @@ export function useKeywordMatch(_threshold: number = 0.7) {
 
     setFocusedImage(best.imageId);
     lastFocusRef.current = { imageId: best.imageId, at: now };
-  }, [transcript, setFocusedImage]);
+  }, [setFocusedImage]);
 
   // ==========================================================================
-  // 3. Manuel reset — dışa açık, kullanıcı ESC veya buton ile tetikleyebilir
+  // 3. FINAL transcript — WebSpeech silence'da commit edince (authoritative)
+  // ==========================================================================
+  useEffect(() => {
+    if (!transcript) return;
+
+    // Final geldi → bekleyen interim timer'ı iptal et
+    if (interimTimerRef.current) {
+      clearTimeout(interimTimerRef.current);
+      interimTimerRef.current = null;
+    }
+    runMatch(transcript);
+  }, [transcript, runMatch]);
+
+  // ==========================================================================
+  // 4. INTERIM debounce — 400ms değişmezse "kullanıcı kelime bitirdi" kabul
+  // ==========================================================================
+  useEffect(() => {
+    if (!interimTranscript) return;
+
+    // Önceki timer'ı iptal — interim değişiyor, idle değil
+    if (interimTimerRef.current) {
+      clearTimeout(interimTimerRef.current);
+    }
+
+    // Yeni timer: 400ms boyunca interim değişmezse match çalıştır
+    interimTimerRef.current = setTimeout(() => {
+      runMatch(interimTranscript);
+      interimTimerRef.current = null;
+    }, INTERIM_IDLE_MS);
+
+    return () => {
+      if (interimTimerRef.current) {
+        clearTimeout(interimTimerRef.current);
+        interimTimerRef.current = null;
+      }
+    };
+  }, [interimTranscript, runMatch]);
+
+  // ==========================================================================
+  // 5. Manuel reset — dışa açık, kullanıcı ESC veya buton ile tetikleyebilir
   // ==========================================================================
   const resetMatch = useCallback(() => {
     setFocusedImage(null);
     lastFocusRef.current = null;
-    lastTranscriptRef.current = '';
+    lastInputRef.current = '';
+    if (interimTimerRef.current) {
+      clearTimeout(interimTimerRef.current);
+      interimTimerRef.current = null;
+    }
   }, [setFocusedImage]);
 
   return { resetMatch };
