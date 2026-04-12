@@ -126,5 +126,6 @@ export function analysisResultToKeywords(result: AnalysisResult): Keyword[] {
     forms: kw.forms,
     confusability: kw.confusability,
     negatives: kw.negatives,
+    isHint: kw.isHint,
   }));
 }

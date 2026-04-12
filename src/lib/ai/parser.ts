@@ -70,6 +70,9 @@ export function parseAnalysisResponse(raw: string): AnalysisResult {
             .slice(0, 5)
         : undefined;
 
+      // FR-014, FR-016: isHint field parse — Gemini explicit vermişse oku
+      const isHint = typeof kw.isHint === 'boolean' ? kw.isHint : undefined;
+
       return {
         text: String(kw.text).toLowerCase().trim(),
         confidence: typeof kw.confidence === 'number'
@@ -82,12 +85,28 @@ export function parseAnalysisResponse(raw: string): AnalysisResult {
         forms,
         confusability,
         negatives,
+        isHint,
       } satisfies AnalyzedKeyword;
     })
     .slice(0, 15);
 
   if (keywords.length < 1) {
     throw new Error('No keywords extracted');
+  }
+
+  // FR-016: Gemini smart default — eğer hiç isHint=true yoksa, en yüksek
+  // confidence'lı ilk 2 keyword'ü otomatik isHint olarak işaretle. Böylece
+  // kullanıcı hiç ⭐ işaretlemese bile hint sistemi default ile çalışır.
+  const hasExplicitHints = keywords.some((k) => k.isHint === true);
+  if (!hasExplicitHints) {
+    const sortedIndexes = keywords
+      .map((k, idx) => ({ idx, confidence: k.confidence }))
+      .sort((a, b) => b.confidence - a.confidence)
+      .slice(0, 2)
+      .map((x) => x.idx);
+    for (const idx of sortedIndexes) {
+      keywords[idx] = { ...keywords[idx], isHint: true };
+    }
   }
 
   return {

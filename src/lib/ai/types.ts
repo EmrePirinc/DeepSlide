@@ -34,6 +34,11 @@ export interface AnalyzedKeyword {
    * Ör: "sis" için ["siz", "his", "sus"]. Gemini'nin bu listeyi üretmesi beklenir.
    */
   negatives?: string[];
+  /**
+   * Ekranda ipucu olarak gösterilecek mi (FR-014, FR-016).
+   * Gemini smart default: top-2 confidence otomatik true.
+   */
+  isHint?: boolean;
 }
 
 export interface ImageAnalysisProvider {

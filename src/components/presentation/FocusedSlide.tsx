@@ -35,27 +35,47 @@ export function FocusedSlide({
 
   return (
     <div
-      className="fixed inset-0 flex flex-col items-center justify-center"
+      className="fixed inset-0 overflow-hidden"
       style={{ backgroundColor: theme.bg }}
     >
+      {/* FR-002: Gaussian blur pillarbox arka plan.
+          Slayt oranı ekran oranından farklıysa kenarlarda siyah şerit yerine
+          aynı görselin scale(1.5) + blur(40px) versiyonu yumuşak geçiş sağlar.
+          Spotify artist-page pattern'ı. */}
+      <div className="absolute inset-0 -z-10" aria-hidden="true">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={imageSrc}
+          alt=""
+          className="w-full h-full object-cover opacity-80 motion-reduce:opacity-60"
+          style={{
+            transform: 'scale(1.5)',
+            filter: 'blur(40px)',
+            willChange: 'transform',
+          }}
+        />
+        <div className="absolute inset-0" style={{ backgroundColor: `${theme.bg}80` }} />
+      </div>
+
       <AnimatePresence mode="wait">
         <motion.div
           key={image.id}
           layoutId={`slide-${image.id}`}
-          className="relative w-full h-full flex items-center justify-center"
+          className="relative w-screen h-screen flex items-center justify-center"
           variants={transition.enter}
           initial="initial"
           animate="animate"
           exit="exit"
           transition={{ type: 'spring', stiffness: 200, damping: 30 }}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <div className="relative inline-flex items-center justify-center" style={{ maxHeight: '85vh' }}>
+          {/* FR-001: Tam ekran slayt — 100vw × 100vh object-contain.
+              Eski max-h-[85vh] kırpması kaldırıldı. */}
+          <div className="relative w-full h-full flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={imageSrc}
               alt={image.fileName}
               className="max-w-full max-h-full object-contain"
-              style={{ maxHeight: '85vh' }}
             />
             {/* Text Overlays — Faz 3 */}
             {(image.textOverlays ?? []).map((overlay) => (

@@ -19,25 +19,53 @@ interface KeywordBadgeProps {
   keyword: Keyword;
   onClick?: () => void;
   isMatched?: boolean;
+  /** Hint toggle görsel state — sarı ring ile vurgulanır (FR-015). */
+  showHintState?: boolean;
 }
 
-export function KeywordBadge({ keyword, onClick, isMatched }: KeywordBadgeProps) {
+export function KeywordBadge({
+  keyword,
+  onClick,
+  isMatched,
+  showHintState = true,
+}: KeywordBadgeProps) {
   const colorClass = keyword.category
     ? CATEGORY_COLORS[keyword.category]
     : DEFAULT_COLOR;
+
+  const isHint = showHintState && keyword.isHint === true;
 
   return (
     <span
       className={`
         inline-flex items-center px-3.5 py-1.5 rounded-full
         text-[10px] font-black uppercase tracking-[0.15em]
-        border cursor-pointer transition-all duration-300
+        border cursor-pointer transition-all duration-300 motion-reduce:transition-none
         ${colorClass}
         ${isMatched ? 'ring-2 ring-primary scale-110 shadow-lg shadow-primary/20' : ''}
+        ${isHint && !isMatched ? 'ring-2 ring-yellow-400 shadow-lg shadow-yellow-400/20' : ''}
         ${keyword.isUserEdited ? 'border-dashed' : ''}
       `}
       style={{ opacity: 0.6 + keyword.confidence * 0.4 }}
       onClick={onClick}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      aria-pressed={onClick && isHint ? true : undefined}
+      aria-label={
+        onClick
+          ? `${keyword.text} — ${isHint ? 'ipucu işaretli, kaldırmak için tıkla' : 'ipucu olarak işaretle'}`
+          : undefined
+      }
     >
       {keyword.text}
       {keyword.synonyms.length > 0 && (

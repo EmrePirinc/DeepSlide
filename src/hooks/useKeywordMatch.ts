@@ -9,7 +9,7 @@ import { normalizeAndAsciify, fastTurkishStemmer } from '@/lib/speech/turkishNLP
 import { AhoCorasickAutomaton } from '@/lib/speech/ahoCorasick';
 
 /**
- * Ses → görsel eşleştirme motoru (MVP).
+ * Ses → görsel eşleştirme motoru + Voice Semantic Jump.
  *
  * Tasarım kararları:
  *   1. FINAL transcript + INTERIM DEBOUNCE — final gelirse anında, interim
@@ -18,9 +18,11 @@ import { AhoCorasickAutomaton } from '@/lib/speech/ahoCorasick';
  *   3. Light Turkish suffix stripping — yolu/yolunda/yolları → yol
  *   4. Asciify diacritic — yürüyüş ↔ yuruyus her iki yönde
  *   5. Negatives O(1) HashSet — sis/siz homofon koruması
- *   6. Longest match wins — multi-word keyword'lerde en spesifik kazanır
+ *   6. Longest match wins — multi-word keyword'lerde en spesifik kazanır (FR-004)
  *   7. Match miss → eski focus KORUNUR (overview'e düşmez)
  *   8. Same-image 500ms debounce — WebSpeech restart repetition koruması
+ *   9. RECENCY PRIOR — Son 60sn gösterilmiş slayt deprioritize (FR-005)
+ *  10. ARIA LIVE REGION — Ekran okuyucu için slayt değişim duyurusu (FR-006)
  *
  * WebSpeech davranışı: kullanıcı durmadıkça `isFinal=true` gelmez. Bu yüzden
  * interim'i de dinliyoruz. Gürültü koruması: 400ms idle süresi + same-image
@@ -31,6 +33,14 @@ import { AhoCorasickAutomaton } from '@/lib/speech/ahoCorasick';
 
 const SAME_IMAGE_DEBOUNCE_MS = 500;
 const INTERIM_IDLE_MS = 400;
+
+/** FR-005: Recency window — son N ms içinde gösterilmiş slayt -2 puan penalty alır. */
+const RECENCY_WINDOW_MS = 60_000;
+/** FR-005: Penalty patternLength'ten çıkarılan değer. */
+const RECENCY_PENALTY = 2;
+
+/** FR-006: ARIA live region DOM id */
+const ARIA_ANNOUNCER_ID = 'voice-jump-announcer';
 
 export function useKeywordMatch(_threshold: number = 0.7) {
   // threshold MVP'de kullanılmıyor — Aho-Corasick exact string match, skor yok.
@@ -50,6 +60,8 @@ export function useKeywordMatch(_threshold: number = 0.7) {
   const lastFocusRef = useRef<{ imageId: string; at: number } | null>(null);
   const lastInputRef = useRef<string>('');
   const interimTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** FR-005: imageId → lastShownAt (ms epoch) — recency prior hesabı için. */
+  const recentShownRef = useRef<Map<string, number>>(new Map());
 
   // ==========================================================================
   // 1. buildIndex — sunum yüklenince Aho-Corasick otomatını kur
@@ -137,26 +149,67 @@ export function useKeywordMatch(_threshold: number = 0.7) {
       return;
     }
 
-    // Longest patternLength + en geç endIndex kazanır
-    let best = matches[0];
-    for (const m of matches) {
-      if (m.patternLength > best.patternLength) {
-        best = m;
-      } else if (m.patternLength === best.patternLength && m.endIndex > best.endIndex) {
-        best = m;
+    // FR-004 + FR-005: Longest pattern + recency prior ile scoring.
+    //
+    // effectivePriority = patternLength - (recency penalty if shown recently)
+    // Son 60sn içinde gösterilmiş bir slayt -2 puan alır → aynı keyword'ü içeren
+    // farklı slayt varsa o kazanır. Aynı keyword sadece bir slayta aitse
+    // yine kazanır (penalty düşse bile pozitif kalır).
+    const now = Date.now();
+    const scored = matches.map((m) => {
+      const lastShown = recentShownRef.current.get(m.imageId) ?? 0;
+      const elapsed = now - lastShown;
+      const penalty = elapsed < RECENCY_WINDOW_MS ? RECENCY_PENALTY : 0;
+      const effectivePriority = m.patternLength - penalty;
+      return { match: m, effectivePriority };
+    });
+
+    // Longest effective priority + en geç endIndex kazanır (tie-break).
+    scored.sort((a, b) => {
+      if (b.effectivePriority !== a.effectivePriority) {
+        return b.effectivePriority - a.effectivePriority;
       }
+      return b.match.endIndex - a.match.endIndex;
+    });
+
+    const best = scored[0].match;
+    if (scored[0].effectivePriority <= 0) {
+      // Penalty bile çıkarıldığında 0'ın altına düşerse tetikleme yok
+      // (çok tekrarlı kısa match senaryosu).
+      return;
     }
 
     // Same-image debounce
-    const now = Date.now();
     const last = lastFocusRef.current;
     if (last && last.imageId === best.imageId && now - last.at < SAME_IMAGE_DEBOUNCE_MS) {
       return;
     }
 
+    // FR-003: Focused image değiştir.
     setFocusedImage(best.imageId);
     lastFocusRef.current = { imageId: best.imageId, at: now };
-  }, [setFocusedImage]);
+    recentShownRef.current.set(best.imageId, now);
+
+    // Recency map GC — 120sn üstü entry temizle (memory leak önleme).
+    for (const [id, ts] of recentShownRef.current) {
+      if (now - ts > RECENCY_WINDOW_MS * 2) {
+        recentShownRef.current.delete(id);
+      }
+    }
+
+    // FR-006: ARIA live region duyurusu — ekran okuyucular için.
+    if (typeof document !== 'undefined') {
+      const announcer = document.getElementById(ARIA_ANNOUNCER_ID);
+      if (announcer) {
+        const images = currentPresentation?.images ?? [];
+        const idx = images.findIndex((i) => i.id === best.imageId);
+        const slideLabel = idx >= 0 ? (images[idx]?.fileName ?? `Slayt ${idx + 1}`) : '';
+        announcer.textContent = idx >= 0
+          ? `Slayt ${idx + 1}'e geçildi — ${slideLabel}`
+          : '';
+      }
+    }
+  }, [setFocusedImage, currentPresentation]);
 
   // ==========================================================================
   // 3. FINAL transcript — WebSpeech silence'da commit edince (authoritative)
@@ -204,6 +257,7 @@ export function useKeywordMatch(_threshold: number = 0.7) {
     setFocusedImage(null);
     lastFocusRef.current = null;
     lastInputRef.current = '';
+    recentShownRef.current.clear();
     if (interimTimerRef.current) {
       clearTimeout(interimTimerRef.current);
       interimTimerRef.current = null;

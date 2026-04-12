@@ -70,6 +70,14 @@ export interface Keyword {
    * final_score -= 0.40. False positive'ları (özellikle homofonları) keser.
    */
   negatives?: string[];
+  /**
+   * Kullanıcı bu keyword'ü "ekranda ipucu olarak göster" diye işaretlediyse
+   * true. Present mode'da CornerHintChip component'i render eder.
+   * Gemini smart default: analiz sonrası top-2 confidence keyword otomatik
+   * isHint=true olarak gelir (FR-016).
+   * undefined → false olarak davranılır (backward compat, FR-014).
+   */
+  isHint?: boolean;
 }
 
 export type KeywordCategory =

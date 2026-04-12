@@ -17,7 +17,9 @@ import { useSubtitles } from '@/hooks/useSubtitles';
 import { useAuth } from '@/hooks/useAuth';
 import { FocusedSlide } from '@/components/presentation/FocusedSlide';
 import { CoverSlide } from '@/components/presentation/CoverSlide';
-import { AdaptiveControls } from '@/components/presentation/AdaptiveControls';
+import { PresenterBottomBar } from '@/components/presentation/PresenterBottomBar';
+import { SlidePositionBar } from '@/components/presentation/SlidePositionBar';
+import { CornerHintChip } from '@/components/presentation/CornerHintChip';
 import { SlideNavigator } from '@/components/presentation/SlideNavigator';
 import { KeywordHint } from '@/components/presentation/KeywordHint';
 import { TranscriptOverlay } from '@/components/speech/TranscriptOverlay';
@@ -83,7 +85,8 @@ export default function PresentationModePage({
 
   const { isPaused, startPresentation, stopPresentation, togglePause } =
     usePresentationMode();
-  const { start: startSpeech, stop: stopSpeech } = useSpeechRecognition();
+  const { start: startSpeech, stop: stopSpeech, isListening: speechListening } =
+    useSpeechRecognition();
 
   const settings = currentPresentation?.settings;
   const theme = getTheme((settings?.selectedTheme ?? 'dark') as ThemeId);
@@ -196,6 +199,22 @@ export default function PresentationModePage({
     if (!focusedImageId || !currentPresentation) return -1;
     return currentPresentation.images.findIndex((img) => img.id === focusedImageId);
   }, [focusedImageId, currentPresentation]);
+
+  // FR-018: Sol-üst önceki slayt hint keyword'leri (isHint=true olanlar)
+  const prevSlideHints = useMemo<string[]>(() => {
+    if (!currentPresentation || currentIdx <= 0) return [];
+    const prevImage = currentPresentation.images[currentIdx - 1];
+    if (!prevImage) return [];
+    return prevImage.keywords.filter((k) => k.isHint).map((k) => k.text);
+  }, [currentPresentation, currentIdx]);
+
+  // FR-019: Sağ-üst sonraki slayt hint keyword'leri
+  const nextSlideHints = useMemo<string[]>(() => {
+    if (!currentPresentation || currentIdx < 0) return [];
+    const nextImage = currentPresentation.images[currentIdx + 1];
+    if (!nextImage) return [];
+    return nextImage.keywords.filter((k) => k.isHint).map((k) => k.text);
+  }, [currentPresentation, currentIdx]);
 
   const handleExit = useCallback(async () => {
     stopSpeech();
@@ -533,19 +552,55 @@ export default function PresentationModePage({
         <SubtitleStrip text={currentSubtitle} isActive={subtitleEnabled && !!currentSubtitle} />
       )}
 
-      {/* Kontroller */}
-      {mode !== 'cover' && settings && (
-        <AdaptiveControls
+      {/* Unified PresenterBottomBar — eski AdaptiveControls + SpeechControls
+          üçlüsünün yerini alır (FR-009, I-001 double render bug fix) */}
+      {mode !== 'cover' && settings && currentPresentation && (
+        <PresenterBottomBar
+          onPrev={goPrev}
+          onNext={goNext}
           onExit={handleExit}
-          onTogglePause={handleTogglePause}
-          isPaused={isPaused}
-          speechProvider={settings.speechProvider}
-          lang={settings.language}
-          onSpeechStart={startSpeech}
-          onSpeechStop={stopSpeech}
-          presentationTitle={currentPresentation.title}
+          onToggleMic={() => {
+            if (speechListening) {
+              stopSpeech();
+            } else {
+              startSpeech(settings.speechProvider, settings.language);
+            }
+          }}
+          isListening={speechListening}
+          canPrev={mode === 'focused' && currentIdx > 0}
+          canNext={
+            mode === 'overview' ||
+            (currentIdx >= 0 && currentIdx < currentPresentation.images.length - 1)
+          }
         />
       )}
+
+      {/* Slide Position Indicator — 2px ince bar üstte (FR-007, FR-008) */}
+      {mode !== 'cover' && currentPresentation && (
+        <SlidePositionBar
+          currentIndex={currentIdx >= 0 ? currentIdx : 0}
+          totalSlides={currentPresentation.images.length}
+        />
+      )}
+
+      {/* Corner Hint Chips — sol-üst prev, sağ-üst next (FR-018, FR-019, FR-020) */}
+      {mode === 'focused' && currentPresentation && currentIdx >= 0 && (
+        <>
+          <CornerHintChip direction="prev" keywords={prevSlideHints} />
+          <CornerHintChip direction="next" keywords={nextSlideHints} />
+        </>
+      )}
+
+      {/* ARIA live region — Voice Jump duyurusu (FR-006, NFR-ACC-004) */}
+      <div
+        id="voice-jump-announcer"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      />
+      {/* Pause toggle desteği korunuyor — keyboard shortcut üzerinden */}
+      {/* eslint-disable-next-line @typescript-eslint/no-unused-expressions */}
+      {void handleTogglePause}
 
       {/* Kayıt kontrolleri — sağ üst köşe */}
       {mode !== 'cover' && (
