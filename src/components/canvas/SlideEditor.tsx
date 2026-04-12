@@ -204,10 +204,6 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
         </div>
       </div>
 
-      {/* ═══ METIN FORMAT TOOLBAR ═══ */}
-      {selectedObject?.type === 'text' && !editingTextId && (
-        <div className="shrink-0"><TextFormatToolbar textObject={selectedObject as TextObject} onUpdate={updateObj} /></div>
-      )}
 
       {/* ═══ ANA ALAN ═══ */}
       <div className="flex-1 flex overflow-hidden">
@@ -229,8 +225,38 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
         )}
 
         {/* Canvas */}
-        <div className="flex-1 overflow-auto flex items-center justify-center p-4" style={{ backgroundColor: '#070D1F' }}
+        <div className="flex-1 overflow-auto flex items-center justify-center p-4 relative" style={{ backgroundColor: '#070D1F' }}
           onWheel={(e) => { if (e.ctrlKey || e.metaKey) { e.preventDefault(); setZoom(z => Math.max(0.25, Math.min(3, z - e.deltaY * 0.001))); } }}>
+
+          {/* ═══ FLOATING CONTEXTUAL TOOLBAR (Canva tarzı) ═══ */}
+          {selectedObject && !editingTextId && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-surface/95 backdrop-blur-xl border border-white/10 rounded-2xl shadow-2xl px-2 py-1.5 flex items-center gap-1 animate-in fade-in slide-in-from-top-2 duration-200">
+              {selectedObject.type === 'text' && (
+                <TextFloatingTools textObject={selectedObject as TextObject} onUpdate={updateObj} />
+              )}
+              {selectedObject.type === 'shape' && (
+                <ShapeFloatingTools shape={selectedObject as ShapeObject} onUpdate={updateObj} />
+              )}
+              {selectedObject.type === 'image' && (
+                <ImageFloatingTools image={selectedObject as ImageObject} onUpdate={updateObj} />
+              )}
+              {/* Ortak aksiyonlar */}
+              <div className="h-5 w-px bg-white/10 mx-1" />
+              <button onClick={() => useCanvasStore.getState().bringForward(selectedObject.id)} className="p-1.5 rounded-lg text-on-surface-variant hover:text-white hover:bg-white/10 transition-all" title="Öne getir">
+                <MaterialIcon icon="flip_to_front" size={16} />
+              </button>
+              <button onClick={() => useCanvasStore.getState().sendBackward(selectedObject.id)} className="p-1.5 rounded-lg text-on-surface-variant hover:text-white hover:bg-white/10 transition-all" title="Arkaya gönder">
+                <MaterialIcon icon="flip_to_back" size={16} />
+              </button>
+              <button onClick={() => useCanvasStore.getState().duplicateSelected()} className="p-1.5 rounded-lg text-on-surface-variant hover:text-white hover:bg-white/10 transition-all" title="Çoğalt">
+                <MaterialIcon icon="content_copy" size={16} />
+              </button>
+              <button onClick={deleteSelected} className="p-1.5 rounded-lg text-rose-400 hover:bg-rose-500/10 transition-all" title="Sil">
+                <MaterialIcon icon="delete" size={16} />
+              </button>
+            </div>
+          )}
+
           <div ref={canvasRef} className="relative shadow-2xl rounded-xl transition-transform duration-100"
             style={{ transform: `scale(${zoom})`, transformOrigin: 'center center' }}
             onClick={() => { if (!editingTextId) { useCanvasStore.getState().deselectAll(); setEditingTextId(null); } }}>
@@ -409,6 +435,85 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
         )}
       </div>
     </motion.div>
+  );
+}
+
+// ─── Floating Contextual Toolbars (Canva Modeli) ──────────
+
+const FONTS = ['Inter', 'Roboto', 'Montserrat', 'Playfair Display', 'Oswald', 'Lato', 'Poppins', 'Merriweather'];
+const FONT_SIZES = [10, 12, 14, 16, 20, 24, 32, 48, 64, 96];
+
+function TextFloatingTools({ textObject, onUpdate }: { textObject: TextObject; onUpdate: (u: Partial<SlideObject>) => void }) {
+  return (
+    <>
+      <select value={textObject.fontFamily} onChange={e => onUpdate({ fontFamily: e.target.value } as Partial<SlideObject>)}
+        className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white outline-none cursor-pointer max-w-[110px]">
+        {FONTS.map(f => <option key={f} value={f} style={{ fontFamily: f }}>{f}</option>)}
+      </select>
+      <select value={textObject.fontSize} onChange={e => onUpdate({ fontSize: Number(e.target.value) } as Partial<SlideObject>)}
+        className="bg-white/5 border border-white/10 rounded-lg px-2 py-1 text-xs text-white outline-none cursor-pointer w-14">
+        {FONT_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+      </select>
+      <div className="h-5 w-px bg-white/10 mx-0.5" />
+      <FloatBtn icon="format_bold" active={textObject.fontWeight >= 700} onClick={() => onUpdate({ fontWeight: textObject.fontWeight >= 700 ? 400 : 700 } as Partial<SlideObject>)} title="Kalın" />
+      <FloatBtn icon="format_italic" active={textObject.fontStyle === 'italic'} onClick={() => onUpdate({ fontStyle: textObject.fontStyle === 'italic' ? 'normal' : 'italic' } as Partial<SlideObject>)} title="İtalik" />
+      <FloatBtn icon="format_underlined" active={textObject.textDecoration === 'underline'} onClick={() => onUpdate({ textDecoration: textObject.textDecoration === 'underline' ? 'none' : 'underline' } as Partial<SlideObject>)} title="Altı çizili" />
+      <div className="h-5 w-px bg-white/10 mx-0.5" />
+      <ColorPicker value={textObject.color} onChange={c => onUpdate({ color: c } as Partial<SlideObject>)} />
+      <div className="h-5 w-px bg-white/10 mx-0.5" />
+      <FloatBtn icon="format_align_left" active={textObject.textAlign === 'left'} onClick={() => onUpdate({ textAlign: 'left' } as Partial<SlideObject>)} title="Sola" />
+      <FloatBtn icon="format_align_center" active={textObject.textAlign === 'center'} onClick={() => onUpdate({ textAlign: 'center' } as Partial<SlideObject>)} title="Ortala" />
+      <FloatBtn icon="format_align_right" active={textObject.textAlign === 'right'} onClick={() => onUpdate({ textAlign: 'right' } as Partial<SlideObject>)} title="Sağa" />
+    </>
+  );
+}
+
+function ShapeFloatingTools({ shape, onUpdate }: { shape: ShapeObject; onUpdate: (u: Partial<SlideObject>) => void }) {
+  return (
+    <>
+      <div className="flex items-center gap-1">
+        <span className="text-[10px] font-bold text-on-surface-variant px-1">Dolgu</span>
+        <ColorPicker value={shape.fill.type === 'solid' ? shape.fill.color : '#6366F1'}
+          onChange={c => onUpdate({ fill: { ...shape.fill, type: 'solid', color: c } } as Partial<SlideObject>)} />
+        <button onClick={() => onUpdate({ fill: { ...shape.fill, type: 'none' } } as Partial<SlideObject>)}
+          className={`p-1 rounded ${shape.fill.type === 'none' ? 'bg-primary/20 text-primary' : 'text-on-surface-variant hover:text-white'}`} title="Dolgu yok">
+          <MaterialIcon icon="format_color_reset" size={14} />
+        </button>
+      </div>
+      <div className="h-5 w-px bg-white/10 mx-0.5" />
+      <div className="flex items-center gap-1">
+        <span className="text-[10px] font-bold text-on-surface-variant px-1">Kenar</span>
+        <ColorPicker value={shape.stroke.color} onChange={c => onUpdate({ stroke: { ...shape.stroke, color: c } } as Partial<SlideObject>)} />
+        <input type="number" min={0} max={20} value={shape.stroke.width}
+          onChange={e => onUpdate({ stroke: { ...shape.stroke, width: Number(e.target.value) } } as Partial<SlideObject>)}
+          className="w-10 bg-white/5 border border-white/10 rounded px-1 py-0.5 text-[10px] text-white outline-none" />
+      </div>
+    </>
+  );
+}
+
+function ImageFloatingTools({ image, onUpdate }: { image: ImageObject; onUpdate: (u: Partial<SlideObject>) => void }) {
+  return (
+    <>
+      <span className="text-[10px] font-bold text-on-surface-variant px-1">Parlaklık</span>
+      <input type="range" min={0} max={200} value={image.brightness}
+        onChange={e => onUpdate({ brightness: Number(e.target.value) } as Partial<SlideObject>)}
+        className="w-16 accent-primary" />
+      <div className="h-5 w-px bg-white/10 mx-0.5" />
+      <span className="text-[10px] font-bold text-on-surface-variant px-1">Köşe</span>
+      <input type="range" min={0} max={50} value={image.borderRadius}
+        onChange={e => onUpdate({ borderRadius: Number(e.target.value) } as Partial<SlideObject>)}
+        className="w-16 accent-primary" />
+    </>
+  );
+}
+
+function FloatBtn({ icon, active, onClick, title }: { icon: string; active?: boolean; onClick: () => void; title: string }) {
+  return (
+    <button onClick={onClick} title={title}
+      className={`p-1.5 rounded-lg transition-all ${active ? 'bg-primary/20 text-primary' : 'text-on-surface-variant hover:text-white hover:bg-white/10'}`}>
+      <MaterialIcon icon={icon} size={16} />
+    </button>
   );
 }
 
