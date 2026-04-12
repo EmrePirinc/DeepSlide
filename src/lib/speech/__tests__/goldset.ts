@@ -264,6 +264,54 @@ export const GOLD_SET: GoldCase[] = [
     rationale: 'İlgisiz',
   },
 
+  // ========== I: Unique partial trigger (multi-word → tek kelime) ==========
+  {
+    id: 'I1',
+    category: 'A',
+    scene: SCENE_LANDSCAPE,
+    spoken: 'yürüyüş harika bir şey',
+    expected: 'img-path',
+    rationale: 'yürüyüş sahnede sadece "yürüyüş yolu"nda geçer → partial trigger',
+  },
+  {
+    id: 'I2',
+    category: 'A',
+    scene: SCENE_LANDSCAPE,
+    spoken: 'saman tarlada yığılıyor',
+    expected: 'img-hay',
+    rationale: 'saman benzersiz parça → img-hay partial trigger',
+  },
+  {
+    id: 'I3',
+    category: 'B',
+    scene: SCENE_LANDSCAPE,
+    spoken: 'balya tarlada bekliyor',
+    expected: 'img-hay',
+    rationale: 'balya (saman balyası stem) sahnede benzersiz → partial trigger',
+  },
+  {
+    id: 'I4',
+    category: 'A',
+    scene: [
+      { id: 'img-walk-path', keywords: [{ text: 'yürüyüş yolu' }] },
+      { id: 'img-mountain-walk', keywords: [{ text: 'dağ yürüyüşü' }] },
+    ],
+    spoken: 'yürüyüş güzeldi',
+    expected: null,
+    rationale: 'yürüyüş iki keyword de geçiyor → ambiguous, partial trigger atla',
+  },
+  {
+    id: 'I5',
+    category: 'A',
+    scene: [
+      { id: 'img-walk-path', keywords: [{ text: 'yürüyüş yolu' }] },
+      { id: 'img-mountain-walk', keywords: [{ text: 'dağ yürüyüşü' }] },
+    ],
+    spoken: 'dağ manzarası',
+    expected: 'img-mountain-walk',
+    rationale: 'dağ sadece img-mountain-walk içinde → partial trigger',
+  },
+
   // ========== H: Diacritic-agnostik ==========
   {
     id: 'H1',

@@ -35,6 +35,15 @@ interface IndexEntry {
   wordCount: number;
   /** Exact match bonus'u uygulanmalı mı — sadece ana form + synonym. */
   exactEligible: boolean;
+  /**
+   * Multi-word keyword'ün benzersiz kelime parçasıysa (partial trigger),
+   * bu entry kullanılır. Score 0.85 sabit, wordCount ana keyword'ünki kalır.
+   * Ama match sırasında threshold'u keyword uzunluğuna göre hesaplarken,
+   * KISA tek kelimenin katı kurallarına takılmasın diye, eşiği keyword uzunluğu
+   * yerine parça uzunluğuyla değil ana keyword ile ölçüyoruz (ana keyword
+   * multi-word → 6+ char garanti → dinamik threshold = base 0.7).
+   */
+  isPartialTrigger?: boolean;
 }
 
 /**
@@ -76,16 +85,31 @@ export class KeywordMatcher {
    *   - Synonyms
    *   - Forms (Türkçe ek varyasyonları, Gemini'den)
    * formlarını hem normalized hem stem versiyonuyla index'e ekler.
+   *
+   * İkinci pass: Multi-word keyword'lerin BENZERSİZ kelime parçaları için
+   * "partial trigger" entry'leri ekler. Örnek:
+   *   Image A keyword: "yürüyüş yolu"
+   *   Image B keyword: "saman balyası"
+   *   Image C keyword: "sis"
+   *   → "yürüyüş" sahnede başka hiçbir yerde geçmiyor → A'nın partial trigger'ı
+   *   → "yolu" (stem "yol") sahnede başka yerde yok → A'nın partial trigger'ı
+   *   → Kullanıcı "yürüyüş" ya da "yolda" dese bile A'ya eşleşir (skor 0.85)
    */
   buildIndex(images: PresentationImage[]): void {
     this.index.clear();
     this.allEntries = [];
 
+    // PASS 1: Tüm keyword'leri normal index'e ekle
     for (const image of images) {
       for (const kw of image.keywords) {
         this.addKeywordToIndex(image.id, kw);
       }
     }
+
+    // PASS 2: Benzersiz parça tetikleme — sahnedeki tüm stem'lenmiş
+    // kelime parçalarının owner setini hesapla, her multi-word keyword'ün
+    // parçaları benzersizse partial trigger ekle.
+    this.addPartialTriggers(images);
   }
 
   private addKeywordToIndex(imageId: string, kw: Keyword): void {
@@ -145,6 +169,89 @@ export class KeywordMatcher {
   }
 
   /**
+   * PASS 2 — Multi-word keyword'lerin benzersiz kelime parçaları için
+   * partial trigger entry'leri ekler.
+   *
+   * Algoritma:
+   *   1. Tüm keyword'lerin (text + synonyms + forms) stem'lenmiş parçalarını
+   *      topla, her parça için hangi görsellere ait olduğunu kaydet.
+   *   2. Her multi-word keyword için, constituent word'leri tek tek incele:
+   *      - Eğer bu word stem'i sahnede SADECE bir görsele ait ise → benzersiz
+   *      - Kelime çok kısa (≤2 char) değilse ve stopword değilse
+   *      - Partial trigger entry'si ekle (skor 0.85, threshold = base)
+   */
+  private addPartialTriggers(images: PresentationImage[]): void {
+    // Pass 2a: stem → Set<imageId> sayımı
+    // Hem ana text hem synonyms hem forms'tan gelen parçaları sayar.
+    const wordOwners = new Map<string, Set<string>>();
+
+    for (const image of images) {
+      for (const kw of image.keywords) {
+        const terms = [kw.text, ...(kw.synonyms ?? []), ...(kw.forms ?? [])];
+        for (const term of terms) {
+          if (!term) continue;
+          const stemmed = normalizePhrase(stemPhrase(normalizePhrase(term)));
+          if (!stemmed) continue;
+          for (const word of stemmed.split(/\s+/)) {
+            if (word.length < 2) continue;
+            if (!wordOwners.has(word)) wordOwners.set(word, new Set());
+            wordOwners.get(word)!.add(image.id);
+          }
+        }
+      }
+    }
+
+    // Pass 2b: Multi-word keyword'lerin benzersiz parçalarına partial trigger ekle
+    const STOPWORDS = new Set([
+      've', 'ile', 'bu', 'şu', 'o', 'bir', 'da', 'de', 'ki', 'mi',
+      'gibi', 'için', 'olan', 'var', 'yok', 'çok', 'az', 'daha', 'en',
+      // asciify sonrası versiyonlar
+      'icin', 'sifir',
+    ]);
+
+    for (const image of images) {
+      for (const kw of image.keywords) {
+        const mainNormalized = normalizePhrase(kw.text);
+        const mainStemmed = normalizePhrase(stemPhrase(mainNormalized));
+        const words = mainStemmed.split(/\s+/);
+        if (words.length < 2) continue; // sadece multi-word keyword'ler
+
+        const confusability = kw.confusability ?? 0.2;
+
+        for (const word of words) {
+          if (word.length < 3) continue;          // çok kısa parça atla (bil, bu, ne)
+          if (STOPWORDS.has(word)) continue;      // stopword atla
+          const owners = wordOwners.get(word);
+          if (!owners) continue;
+          if (owners.size !== 1) continue;        // birden fazla görsele ait → ambiguous, geç
+          if (!owners.has(image.id)) continue;    // başka görselde benzersiz (teorik)
+
+          // Benzersiz parça — partial trigger entry'si oluştur
+          const partialEntry: IndexEntry = {
+            normalized: word,
+            stemmed: word,
+            imageIds: new Set([image.id]),
+            confusability,
+            // Ana keyword'ün uzunluğunu koru → dynamic threshold = base (0.7) kalsın,
+            // kısa kelime (3 char) penaltisi uygulanmasın
+            keywordLength: mainNormalized.length,
+            wordCount: 1,
+            exactEligible: false,
+            isPartialTrigger: true,
+          };
+
+          // Bu word zaten ana index'teyse (başka bir keyword'ün synonym/form'u olarak)
+          // üzerine yazma — partial sadece normal match miss olunca aranacak.
+          if (!this.index.has(word)) {
+            this.index.set(word, [partialEntry]);
+            this.allEntries.push(partialEntry);
+          }
+        }
+      }
+    }
+  }
+
+  /**
    * Söylenen kelimelerden N-gram'lar üretir (1, 2, 3 kelimelik kombinasyonlar).
    * "yürüyüş yolu güzel" → ["yürüyüş", "yolu", "güzel", "yürüyüş yolu", "yolu güzel", "yürüyüş yolu güzel"]
    */
@@ -191,7 +298,7 @@ export class KeywordMatcher {
     const results: MatchResult[] = [];
     const seen = new Set<string>(); // aynı entry.normalized'a tekrar ekleme
 
-    // ========== 1. EXACT MATCH (normalized + stemmed) ==========
+    // ========== 1. EXACT MATCH (normalized + stemmed + partial trigger) ==========
     for (const ngram of normalizedNgrams) {
       if (!ngram || ngram.length < 2) continue;
       const exact = this.index.get(ngram);
@@ -200,11 +307,19 @@ export class KeywordMatcher {
           if (seen.has(entry.normalized)) continue;
           seen.add(entry.normalized);
 
-          // Multi-word bonus: sadece exact match'te + ana form
-          const wordBonus = entry.exactEligible
-            ? (entry.wordCount - 1) * 0.05
-            : -0.05; // stem match → küçük penalty
-          const score = Math.min(1.0, 1.0 + wordBonus);
+          // Partial trigger: benzersiz parça → skor sabit 0.85
+          // (ana keyword 'yürüyüş yolu', kullanıcı 'yürüyüş' dedi, sahnede
+          //  başka 'yürüyüş' yok → A görseline tetikle)
+          let score: number;
+          if (entry.isPartialTrigger) {
+            score = 0.85;
+          } else {
+            // Multi-word bonus: sadece exact match'te + ana form
+            const wordBonus = entry.exactEligible
+              ? (entry.wordCount - 1) * 0.05
+              : -0.05; // stem match → küçük penalty
+            score = Math.min(1.0, 1.0 + wordBonus);
+          }
 
           // Threshold kontrolü
           const th = dynamicThreshold(
@@ -231,7 +346,9 @@ export class KeywordMatcher {
         for (const entry of exact) {
           if (seen.has(entry.normalized)) continue;
           seen.add(entry.normalized);
-          const score = 0.9; // stem match → 0.9 sabit (exact'ten düşük)
+          // Partial trigger de stem ngram ile bulunabilir ("yolu" → stem "yol"
+          // → partial trigger "yol" hit). Skorları ayrı tutalım.
+          const score = entry.isPartialTrigger ? 0.85 : 0.9;
           const th = dynamicThreshold(
             entry.keywordLength,
             entry.confusability,
