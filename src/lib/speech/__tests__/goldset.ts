@@ -27,6 +27,7 @@ export interface KeywordSpec {
   synonyms?: string[];
   forms?: string[];
   confusability?: number;
+  negatives?: string[];
 }
 
 export interface SceneImage {
@@ -36,7 +37,7 @@ export interface SceneImage {
 
 export interface GoldCase {
   id: string;
-  category: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'J';
+  category: 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G' | 'H' | 'J' | 'K';
   scene: SceneImage[];
   spoken: string;
   expected: string | null;
@@ -47,6 +48,11 @@ export interface GoldCase {
    * `matchStreamingPrefix` metodunu çağırır.
    */
   streamingPrefix?: boolean;
+  /**
+   * K kategori (semantic synonym) vakaları için, string-level metrikler
+   * yetersizdir. Runner bu flag'e bakıp embedding rerank ile match çağırır.
+   */
+  semanticRerank?: boolean;
 }
 
 // Ortak sahneler — vakalar içinde tekrar kullanılır
@@ -415,6 +421,106 @@ export const GOLD_SET: GoldCase[] = [
     expected: 'img-mountain',
     rationale: 'dag asciified dağ benzersiz prefix → erken tetik',
     streamingPrefix: true,
+  },
+
+  // ========== K: Semantic Synonym (string ≈ 0, embedding > 0.7) ==========
+  // Bu vakalar mevcut string tabanlı matcher'da düşer. Embedding rerank ile
+  // geçer. K kategorisi Sprint 3'ün (mE5-small cascaded rerank) ölçüm hedefi.
+  {
+    id: 'K1',
+    category: 'K',
+    scene: [
+      { id: 'img-car', keywords: [{ text: 'araba' }] },
+      { id: 'img-house', keywords: [{ text: 'ev' }] },
+    ],
+    spoken: 'otomobil geldi',
+    expected: 'img-car',
+    rationale: 'otomobil ↔ araba pure semantic, string distance yüksek',
+    semanticRerank: true,
+  },
+  {
+    id: 'K2',
+    category: 'K',
+    scene: [
+      { id: 'img-computer', keywords: [{ text: 'bilgisayar' }] },
+      { id: 'img-car', keywords: [{ text: 'araba' }] },
+    ],
+    spoken: 'laptop aldım',
+    expected: 'img-computer',
+    rationale: 'laptop ↔ bilgisayar direct loanword synonym, wrong (araba) uzak',
+    semanticRerank: true,
+  },
+  {
+    id: 'K3',
+    category: 'K',
+    scene: [
+      { id: 'img-book', keywords: [{ text: 'kitap' }] },
+      { id: 'img-phone', keywords: [{ text: 'telefon' }] },
+    ],
+    spoken: 'roman okudum',
+    expected: 'img-book',
+    rationale: 'roman ↔ kitap semantic',
+    semanticRerank: true,
+  },
+  {
+    id: 'K4',
+    category: 'K',
+    scene: [
+      { id: 'img-flower', keywords: [{ text: 'çiçek' }] },
+      { id: 'img-car', keywords: [{ text: 'araba' }] },
+    ],
+    spoken: 'gül kırmızı',
+    expected: 'img-flower',
+    rationale: 'gül ↔ çiçek alt-kategori, wrong option (araba) uzak kavram',
+    semanticRerank: true,
+  },
+  {
+    id: 'K5',
+    category: 'K',
+    scene: [
+      { id: 'img-music', keywords: [{ text: 'müzik' }] },
+      { id: 'img-painting', keywords: [{ text: 'resim' }] },
+    ],
+    spoken: 'şarkı çalıyor',
+    expected: 'img-music',
+    rationale: 'şarkı ↔ müzik semantic',
+    semanticRerank: true,
+  },
+  {
+    id: 'K6',
+    category: 'K',
+    scene: [
+      { id: 'img-dog', keywords: [{ text: 'köpek' }] },
+      { id: 'img-cat', keywords: [{ text: 'kedi' }] },
+    ],
+    spoken: 'kuçu kuçu',
+    expected: 'img-dog',
+    rationale: 'kuçu ↔ köpek informal/semantic',
+    semanticRerank: true,
+  },
+  {
+    id: 'K7',
+    category: 'K',
+    scene: [
+      { id: 'img-winter', keywords: [{ text: 'kış' }] },
+      { id: 'img-summer', keywords: [{ text: 'yaz' }] },
+    ],
+    spoken: 'soğuk hava',
+    expected: 'img-winter',
+    rationale: 'soğuk ↔ kış kavramsal',
+    semanticRerank: true,
+  },
+  {
+    id: 'K8',
+    category: 'K',
+    scene: [
+      { id: 'img-food', keywords: [{ text: 'yemek' }] },
+      { id: 'img-drink', keywords: [{ text: 'içecek' }] },
+    ],
+    spoken: 'lezzetli bir şey',
+    expected: 'img-food',
+    rationale: 'lezzet ↔ yemek semantic',
+    semanticRerank: true,
   },
 ];
 

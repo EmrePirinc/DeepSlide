@@ -4,10 +4,11 @@
 import { describe, it, expect } from 'vitest';
 import type { PresentationImage, Keyword } from '@/types/presentation';
 import { KeywordMatcher } from '../keywordMatcher';
-import { evaluateGoldSet, type SceneImage, type KeywordSpec } from './goldset';
+import { evaluateGoldSet, GOLD_SET, type SceneImage, type KeywordSpec } from './goldset';
 import { normalizePhrase, asciifyTurkish, areConfusable } from '../normalize';
 import { ensembleScore, jaroWinkler, trigramCosine, confusableAwareSimilarity } from '../similarity';
 import { stemWord, stemPhrase } from '../stemmer';
+import { FixtureEmbedder } from './fixtureEmbedder';
 
 // Helper: GoldCase sahnesini PresentationImage[]'e çevir
 function toPresentationImages(scene: SceneImage[]): PresentationImage[] {
@@ -29,6 +30,7 @@ function toPresentationImages(scene: SceneImage[]): PresentationImage[] {
       synonyms: kw.synonyms ?? [],
       forms: kw.forms,
       confusability: kw.confusability,
+      negatives: kw.negatives,
     } satisfies Keyword)),
     analysisStatus: 'completed' as const,
     createdAt: Date.now(),
@@ -37,10 +39,12 @@ function toPresentationImages(scene: SceneImage[]): PresentationImage[] {
 
 // Gold set runner — matcher'ı her vaka için yeniden kur, en iyi matchi döndür.
 // J kategori (streaming prefix) vakalarında matchStreamingPrefix çağrılır.
+// K kategori (semantic rerank) sync runner'da SKIP edilir — K vakaları için
+// ayrı async runner (K-only test block) vardır.
 function matchScene(
   scene: SceneImage[],
   spoken: string,
-  caseInfo?: { streamingPrefix?: boolean },
+  caseInfo?: { streamingPrefix?: boolean; semanticRerank?: boolean },
 ): string | null {
   const matcher = new KeywordMatcher();
   matcher.buildIndex(toPresentationImages(scene));
@@ -50,6 +54,8 @@ function matchScene(
     return m?.imageIds[0] ?? null;
   }
 
+  // K vakaları: sync runner string metrikleriyle match dener, çoğu null döner
+  // → baseline. Gerçek rerank async test block'unda yapılır.
   const words = spoken.toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
   const recentWords = words.slice(-8); // gold set'te cümleler daha uzun, window'u genişlet
   const matches = matcher.match(recentWords, 0.7);
@@ -164,6 +170,40 @@ describe('keywordMatcher gold set', () => {
     expect(j.fail).toBe(0);
     expect(j.pass).toBeGreaterThan(0);
   });
+
+  // K kategori (semantic synonym) — sync runner'da çoğunluk DÜŞMELI.
+  // Bu BASELINE ölçümü; embedding rerank eklenmeden string metrikleri ile
+  // çözülemez. Gerçek rerank async block'ta doğrulanır.
+  it('semantic (K category) baseline — string-only fails most cases', () => {
+    const k = result.byCategory.K ?? { pass: 0, fail: 0 };
+    // En fazla 2 vaka geçebilir (sadece negatif testler); çoğu düşmeli
+    expect(k.fail).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe('keywordMatcher — semantic rerank (K category, fixture-backed)', () => {
+  // K kategorisi vakalarını al
+  const kCases = GOLD_SET.filter((g) => g.category === 'K');
+
+  it('loads fixture and covers all K cases', () => {
+    expect(kCases.length).toBeGreaterThan(0);
+  });
+
+  for (const gc of kCases) {
+    it(`${gc.id}: ${gc.spoken} → ${gc.expected}`, async () => {
+      const matcher = new KeywordMatcher();
+      matcher.buildIndex(toPresentationImages(gc.scene));
+
+      // Fixture embedder ile passage'ları prefetch et
+      const embedder = new FixtureEmbedder();
+      await matcher.prefetchEmbeddings(embedder);
+
+      // Semantic-only match (K vakaları pure semantic testleri)
+      const result = await matcher.matchSemanticOnly(gc.spoken, embedder);
+      expect(result).not.toBeNull();
+      expect(result!.imageIds[0]).toBe(gc.expected);
+    });
+  }
 });
 
 describe('keywordMatcher — streaming prefix (unit)', () => {

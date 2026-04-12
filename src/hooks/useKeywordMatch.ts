@@ -8,6 +8,7 @@ import { useSpeechStore } from '@/stores/speechStore';
 import { usePresentationStore } from '@/stores/presentationStore';
 import { KeywordMatcher } from '@/lib/speech/keywordMatcher';
 import { AnimationOrchestrator } from '@/lib/animation/orchestrator';
+import { prefetchEmbedder } from '@/lib/speech/embedder';
 import type { MatchResult } from '@/lib/speech/types';
 
 const IS_DEV =
@@ -45,15 +46,32 @@ export function useKeywordMatch(threshold: number = 0.7) {
   const { interimTranscript, transcript, interimConfidence } = useSpeechStore();
   const { currentPresentation, setActiveImages, setFocusedImage, setViewMode } = usePresentationStore();
 
-  // Keyword index'i oluştur (presentation değiştiğinde)
+  // Keyword index'i oluştur (presentation değiştiğinde) + embedding prefetch
   useEffect(() => {
-    if (currentPresentation?.images) {
-      matcherRef.current.buildIndex(currentPresentation.images);
-      matchDebug('buildIndex', {
-        imageCount: currentPresentation.images.length,
-        keywordCount: currentPresentation.images.reduce((a, i) => a + i.keywords.length, 0),
-      });
-    }
+    if (!currentPresentation?.images) return;
+    matcherRef.current.buildIndex(currentPresentation.images);
+    matchDebug('buildIndex', {
+      imageCount: currentPresentation.images.length,
+      keywordCount: currentPresentation.images.reduce((a, i) => a + i.keywords.length, 0),
+    });
+
+    // Background: mE5 modelini prefetch et + embedding cache'i doldur.
+    // Non-blocking — eğer model yüklenmezse match normal çalışır (graceful).
+    prefetchEmbedder();
+    const matcher = matcherRef.current;
+    let cancelled = false;
+    (async () => {
+      try {
+        await matcher.prefetchEmbeddings();
+        if (!cancelled) matchDebug('embeddingsPrefetched', {});
+      } catch {
+        // Silent fail — rerank sırasında ensemble'a düşer
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [currentPresentation?.images]);
 
   // Orchestrator onChange callback — hem activeIds hem focusedId işle
@@ -144,31 +162,44 @@ export function useKeywordMatch(threshold: number = 0.7) {
     });
     boosted.sort((a, b) => b.score - a.score);
 
-    const topMatch = boosted[0];
-
     // Cooldown GC — 5 sn üstü entry'leri temizle
     for (const [id, at] of recentFocusRef.current) {
       if (now - at > 5000) recentFocusRef.current.delete(id);
     }
 
-    matchDebug('fullMatch', {
-      phrase,
-      topKeyword: topMatch.keyword,
-      topScore: topMatch.score,
-      effectiveThreshold,
-    });
+    // ----- CASCADED EMBEDDING RERANK (async, graceful) -----
+    // Top score belirsizlik band'ındaysa (0.55-0.80) mE5 embedding ile rerank.
+    // Model hazır değilse sessizce atlar, ensemble'a güvenir.
+    const matcher = matcherRef.current;
+    void (async () => {
+      let finalBoosted = boosted;
+      try {
+        finalBoosted = await matcher.rerankWithEmbedding(text, boosted);
+      } catch {
+        // fallback: ensemble-only
+      }
 
-    // Prezi modu: en iyi görsel tek odaklanma hedefi
-    if (topMatch.imageIds.length > 0) {
-      orchestratorRef.current.focusImage(topMatch.imageIds[0], topMatch.score);
-      recentFocusRef.current.set(topMatch.imageIds[0], now);
-    } else {
-      // Fallback: tüm eşleşen görselleri aktive et
-      const allImageIds = boosted.flatMap((m) => m.imageIds);
-      orchestratorRef.current.activateImages([...new Set(allImageIds)]);
-    }
+      const topMatch = finalBoosted[0];
+      if (!topMatch) return;
 
-    useSpeechStore.getState().setMatches(boosted);
+      matchDebug('fullMatch', {
+        phrase,
+        topKeyword: topMatch.keyword,
+        topScore: topMatch.score,
+        effectiveThreshold,
+        reranked: finalBoosted !== boosted,
+      });
+
+      if (topMatch.imageIds.length > 0) {
+        orchestratorRef.current.focusImage(topMatch.imageIds[0], topMatch.score);
+        recentFocusRef.current.set(topMatch.imageIds[0], Date.now());
+      } else {
+        const allImageIds = finalBoosted.flatMap((m) => m.imageIds);
+        orchestratorRef.current.activateImages([...new Set(allImageIds)]);
+      }
+
+      useSpeechStore.getState().setMatches(finalBoosted);
+    })();
   }, [interimTranscript, transcript, threshold, interimConfidence]);
 
   // Final transcript geldiğinde history reset

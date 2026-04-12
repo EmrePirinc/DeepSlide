@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .env.local
+
+# Transformers.js model cache (local only, 45+ MB)
+.transformers-cache/

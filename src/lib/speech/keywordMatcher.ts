@@ -8,6 +8,13 @@ import { stemPhrase } from './stemmer';
 import { ensembleScore } from './similarity';
 import { KeywordTrie, type TrieEntry } from './trie';
 import { BM25Matcher, reciprocalRankFusion, type BM25Entry } from './bm25';
+import {
+  cosineSimilarity,
+  getEmbedder,
+  RERANK_BLEND,
+  UNCERTAINTY_BAND,
+  type Embedder,
+} from './embedder';
 
 /**
  * Türkçe keyword eşleştirme motoru — ensemble similarity + stem + normalization.
@@ -46,6 +53,11 @@ interface IndexEntry {
   tfIdfWeight: number;
   /** Negative keyword listesi (bu listede geçen kelime söylenirse skor cezalandırılır). */
   negatives: string[];
+  /**
+   * Embedding rerank için passage text — ana keyword + synonyms + forms birleşimi.
+   * Sunum yüklenirken background olarak encode edilir ve cache'e yazılır.
+   */
+  embeddingPassage: string;
   /**
    * Multi-word keyword'ün benzersiz kelime parçasıysa (partial trigger),
    * bu entry kullanılır. Score 0.85 sabit, wordCount ana keyword'ünki kalır.
@@ -106,6 +118,12 @@ export class KeywordMatcher {
    * Ensemble ile RRF fusion'a girer.
    */
   private bm25 = new BM25Matcher();
+
+  /**
+   * Embedding cache — imageId → Float32Array (384 dim).
+   * buildIndex sonrası prefetchEmbeddings() background olarak doldurur.
+   */
+  private embeddingCache = new Map<string, Float32Array>();
 
   /**
    * Görsellerin keyword'lerinden inverted index oluşturur.
@@ -261,6 +279,12 @@ export class KeywordMatcher {
     const mainNormalized = normalizePhrase(kw.text);
     const mainLength = mainNormalized.length;
     const mainWordCount = mainNormalized.split(/\s+/).length;
+    // Embedding passage: ana keyword + synonyms, orijinal Türkçe formda
+    // (model Türkçe'yi tanıyor, asciify'a gerek yok)
+    const embeddingPassage = [kw.text, ...(kw.synonyms ?? [])]
+      .filter(Boolean)
+      .join(' ')
+      .trim();
 
     for (const rawTerm of rawTerms) {
       const normalized = normalizePhrase(rawTerm);
@@ -277,6 +301,7 @@ export class KeywordMatcher {
         exactEligible: true,
         tfIdfWeight: 1.0, // PASS 5'te hesaplanır
         negatives,
+        embeddingPassage,
       };
 
       // Normalized form ile index'e ekle (exact match lookup)
@@ -378,6 +403,7 @@ export class KeywordMatcher {
             exactEligible: false,
             tfIdfWeight: 1.0, // PASS 5
             negatives: (kw.negatives ?? []).map((n) => normalizePhrase(n)).filter(Boolean),
+            embeddingPassage: kw.text,
             isPartialTrigger: true,
           };
 
@@ -668,6 +694,150 @@ export class KeywordMatcher {
 
     const avgScore = sum / scores.length;
     return 0.6 * minScore + 0.4 * avgScore;
+  }
+
+  /**
+   * Sunum yüklendiğinde background'da tüm keyword passage'larını encode edip
+   * embeddingCache'e doldurur. Blocking değil, hata fırlatmaz.
+   *
+   * Kullanım: buildIndex'ten sonra çağır.
+   * Eğer embedder yüklenmemişse sessizce atlanır; rerank sırasında tekrar
+   * denenir.
+   */
+  async prefetchEmbeddings(embedder: Embedder = getEmbedder()): Promise<void> {
+    if (!embedder) return;
+
+    // Unique passage → imageId(s) haritası kur (aynı metni tekrar encode etme)
+    const passageToImages = new Map<string, Set<string>>();
+    for (const entry of this.allEntries) {
+      const passage = entry.embeddingPassage;
+      if (!passage) continue;
+      for (const imageId of entry.imageIds) {
+        if (this.embeddingCache.has(imageId)) continue;
+        if (!passageToImages.has(passage)) passageToImages.set(passage, new Set());
+        passageToImages.get(passage)!.add(imageId);
+      }
+    }
+
+    for (const [passage, imageIds] of passageToImages) {
+      try {
+        const vec = await embedder.embedPassage(passage);
+        for (const id of imageIds) {
+          this.embeddingCache.set(id, vec);
+        }
+      } catch {
+        // Embedder hazır değilse atla (graceful degradation)
+        return;
+      }
+    }
+  }
+
+  /**
+   * Bir imageId için cached embedding döndürür (yoksa null).
+   * Test fixture'ları manuel yükleme için de kullanılır.
+   */
+  setCachedEmbedding(imageId: string, vec: Float32Array): void {
+    this.embeddingCache.set(imageId, vec);
+  }
+
+  getCachedEmbedding(imageId: string): Float32Array | null {
+    return this.embeddingCache.get(imageId) ?? null;
+  }
+
+  /**
+   * Cascaded rerank: ensemble skorları belirsiz band'daysa (UNCERTAINTY_BAND)
+   * embedding similarity ile yeniden sıralar. Belirsiz olmayan skorlar
+   * doğrudan geçer.
+   *
+   *   final = 0.55 × ensemble + 0.45 × (query_emb · passage_emb)
+   *
+   * @param spokenPhrase Ham (normalize edilmemiş, Türkçe diacritic korunmuş) metin
+   * @param results match() sonucu
+   * @param embedder Override için test inject'i; default: global
+   */
+  async rerankWithEmbedding(
+    spokenPhrase: string,
+    results: MatchResult[],
+    embedder: Embedder = getEmbedder(),
+  ): Promise<MatchResult[]> {
+    if (results.length === 0 || !spokenPhrase) return results;
+
+    const top = results[0];
+    const [lo, hi] = UNCERTAINTY_BAND;
+
+    // Eğer top result hiç yoksa veya belirsizlik band'ında DEĞİLSE, direkt geç
+    if (top.score < lo || top.score > hi) {
+      return results;
+    }
+
+    // Query embed et (hata → fallback)
+    let queryVec: Float32Array;
+    try {
+      queryVec = await embedder.embedQuery(spokenPhrase);
+    } catch {
+      return results;
+    }
+
+    // Her sonucun primary imageId'si için cache'den embedding al ve blend et
+    const reranked: MatchResult[] = [];
+    for (const r of results) {
+      const primaryId = r.imageIds[0];
+      if (!primaryId) {
+        reranked.push(r);
+        continue;
+      }
+      const passageVec = this.embeddingCache.get(primaryId);
+      if (!passageVec) {
+        reranked.push(r);
+        continue;
+      }
+      const embSim = cosineSimilarity(queryVec, passageVec);
+      const blended = RERANK_BLEND.ensemble * r.score + RERANK_BLEND.embedding * embSim;
+      reranked.push({ ...r, score: blended });
+    }
+
+    return reranked.sort((a, b) => b.score - a.score);
+  }
+
+  /**
+   * Semantic-only match — K kategorisi testleri için.
+   *
+   * Bu metod sahnedeki TÜM image'ları embedding cosine similarity'ye göre
+   * sıralar ve en yüksek skorluyu döndürür. Sadece embedding sinyal
+   * kullanır, ensemble/string metriklerini atlar.
+   *
+   * Normal production kullanımı DEĞİL — ensemble string metricleri yok sayılarak
+   * semantic-only retrieval gerekiyorsa (K category benchmark) kullanılır.
+   */
+  async matchSemanticOnly(
+    spokenPhrase: string,
+    embedder: Embedder = getEmbedder(),
+  ): Promise<MatchResult | null> {
+    if (!spokenPhrase || this.embeddingCache.size === 0) return null;
+
+    let queryVec: Float32Array;
+    try {
+      queryVec = await embedder.embedQuery(spokenPhrase);
+    } catch {
+      return null;
+    }
+
+    let bestId: string | null = null;
+    let bestScore = 0;
+    for (const [imageId, passageVec] of this.embeddingCache) {
+      const sim = cosineSimilarity(queryVec, passageVec);
+      if (sim > bestScore) {
+        bestScore = sim;
+        bestId = imageId;
+      }
+    }
+
+    if (!bestId) return null;
+    return {
+      keyword: spokenPhrase,
+      imageIds: [bestId],
+      score: bestScore,
+    };
   }
 
   /**
