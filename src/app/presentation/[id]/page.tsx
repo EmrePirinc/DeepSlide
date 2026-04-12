@@ -358,6 +358,7 @@ export default function PresentationEditorPage({
           <SlideEditor
             image={editingImage}
             slideId={editingImage.id}
+            presentationId={currentPresentation.id}
             onClose={() => setEditingImage(null)}
           />
         )}

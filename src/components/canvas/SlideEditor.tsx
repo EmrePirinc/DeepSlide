@@ -5,6 +5,7 @@
 
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { motion } from 'motion/react';
+import { useRouter } from 'next/navigation';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { TextFormatToolbar } from './TextFormatToolbar';
 import { ShapeStylePanel } from './ShapeStylePanel';
@@ -23,12 +24,14 @@ import type { PresentationImage } from '@/types/presentation';
 interface SlideEditorProps {
   image: PresentationImage;
   slideId: string;
+  presentationId: string;
   onClose: () => void;
 }
 
 type DragMode = 'move' | 'resize-se' | 'resize-e' | 'resize-s' | 'resize-nw' | 'resize-ne' | 'resize-sw' | 'resize-w' | 'resize-n' | 'rotate';
 
-export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
+export function SlideEditor({ image, slideId, presentationId, onClose }: SlideEditorProps) {
+  const router = useRouter();
   const canvasRef = useRef<HTMLDivElement>(null);
   const selectedIds = useCanvasStore(s => s.selectedIds);
   const slides = useCanvasStore(s => s.slides);
@@ -182,9 +185,20 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
     <motion.div className="fixed inset-0 z-50 bg-background flex flex-col" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
       {/* ═══ ÜST BAR ═══ */}
       <div className="flex items-center justify-between px-4 py-2 bg-surface/60 backdrop-blur-xl border-b border-white/5 shrink-0">
-        <button onClick={onClose} className="flex items-center gap-2 px-3 py-2 rounded-xl text-on-surface-variant hover:text-white hover:bg-white/5 transition-all text-sm font-bold">
-          <MaterialIcon icon="arrow_back" size={20} /> Kanvasa Dön
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={onClose} className="flex items-center gap-2 px-3 py-2 rounded-xl text-on-surface-variant hover:text-white hover:bg-white/5 transition-all text-sm font-bold">
+            <MaterialIcon icon="arrow_back" size={20} /> Kanvasa Dön
+          </button>
+          <div className="h-6 w-px bg-white/10 mx-1" />
+          <button
+            onClick={() => router.push(`/presentation/${presentationId}/present`)}
+            className="flex items-center gap-2 px-5 py-2 rounded-xl bg-primary hover:bg-primary-container text-white text-sm font-bold shadow-xl shadow-primary/30 active:scale-95 transition-all"
+            title="Sunumu Başlat"
+          >
+            <MaterialIcon icon="play_arrow" size={20} />
+            Sunumu Başlat
+          </button>
+        </div>
         <div className="flex items-center gap-1 bg-white/5 px-2 py-1 rounded-xl border border-white/5">
           <ToolBtn icon="title" label="Metin" onClick={addText} />
           <div className="h-4 w-px bg-white/10" />
