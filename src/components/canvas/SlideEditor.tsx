@@ -391,21 +391,6 @@ export function SlideEditor({ image, slideId, onClose }: SlideEditorProps) {
                   </section>
                 )}
 
-                {/* Z-Index Kontrolleri */}
-                <section>
-                  <p className="text-[9px] font-black text-on-surface-variant uppercase tracking-wider mb-2">Katman Sırası</p>
-                  <div className="flex gap-1">
-                    <button onClick={() => useCanvasStore.getState().bringToFront(selectedObject.id)} className="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-white/5 text-on-surface-variant hover:text-white hover:bg-white/10 transition-all" title="En öne">↑↑</button>
-                    <button onClick={() => useCanvasStore.getState().bringForward(selectedObject.id)} className="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-white/5 text-on-surface-variant hover:text-white hover:bg-white/10 transition-all" title="Öne">↑</button>
-                    <button onClick={() => useCanvasStore.getState().sendBackward(selectedObject.id)} className="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-white/5 text-on-surface-variant hover:text-white hover:bg-white/10 transition-all" title="Arkaya">↓</button>
-                    <button onClick={() => useCanvasStore.getState().sendToBack(selectedObject.id)} className="flex-1 py-1.5 rounded-lg text-[10px] font-bold bg-white/5 text-on-surface-variant hover:text-white hover:bg-white/10 transition-all" title="En arkaya">↓↓</button>
-                  </div>
-                </section>
-
-                {/* Çoğalt */}
-                <button onClick={() => useCanvasStore.getState().duplicateSelected()} className="w-full py-2 rounded-lg text-[10px] font-bold bg-white/5 text-on-surface-variant hover:text-white hover:bg-white/10 transition-all flex items-center justify-center gap-1.5">
-                  <MaterialIcon icon="content_copy" size={14} /> Çoğalt
-                </button>
               </>
             ) : (
               /* Nesne seçilmemişken genel bilgi */
