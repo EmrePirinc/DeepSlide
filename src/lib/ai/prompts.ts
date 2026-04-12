@@ -14,7 +14,7 @@ export function getImageAnalysisPrompt(
   language: AnalysisLanguage = 'tr',
   keywordCount: number = 3
 ): string {
-  // Türkçe için zenginleştirilmiş prompt: synonyms + forms + confusability
+  // Türkçe için zenginleştirilmiş prompt: synonyms + forms + confusability + negatives
   // Bu alanlar DeepSlide keyword matcher'ının doğruluğunu dramatik artırır.
   if (language === 'tr') {
     return `Bu görseli analiz et. Sadece JSON döndür:
@@ -27,7 +27,8 @@ export function getImageAnalysisPrompt(
       "category": "object",
       "synonyms": ["patika", "keçi yolu"],
       "forms": ["yürüyüş yolunda", "yürüyüş yoluna", "yürüyüş yolları"],
-      "confusability": 0.15
+      "confusability": 0.15,
+      "negatives": []
     },
     {
       "text": "sis",
@@ -35,7 +36,8 @@ export function getImageAnalysisPrompt(
       "category": "concept",
       "synonyms": ["pus", "duman"],
       "forms": ["sisli", "siste", "sisin"],
-      "confusability": 0.85
+      "confusability": 0.85,
+      "negatives": ["siz", "his", "sus"]
     }
   ],
   "description": "tek cümle Türkçe açıklama"
@@ -49,13 +51,16 @@ Kurallar:
 - "synonyms": 2-4 eş anlamlı alternatif, Türkçe, küçük harf
 - "forms": Konuşmacının cümlesinde kullanabileceği Türkçe ek almış formlar
   (bulunma: yolda, yönelme: yoluna, çıkma: yoldan, çoğul: yollar, iyelik: yolları).
-  Ek bilgi: Kök keyword'dür "yol", forms "yolu, yolda, yoluna, yollar, yolları".
   En olası 3-6 formu döndür.
 - "confusability": 0-1, bu keyword Türkçe'de başka bir kelimeyle (konuşma sırasında) ne kadar
   karıştırılabilir?
   Yüksek örnekler (0.7-0.9): "sis" (siz), "bal" (bel), "kar" (kır), "bel" (bal), "san" (sen)
   Düşük örnekler (0.1-0.3): "yürüyüş yolu", "bulutlar", "dağ", "saman balyası"
-  Varsayılan 0.2 ver, gerçekten benzer sesli Türkçe kelime varsa yüksek ver.
+  Varsayılan 0.2 ver.
+- "negatives": Bu keyword ile karıştırılabilecek AMA KASTEDİLMEYEN Türkçe kelimeler.
+  Yüksek confusability keyword'lerinde 3-5 öğe, düşük confusability keyword'lerinde 0-1.
+  "sis" → ["siz","his","sus"]; "bal" → ["bel","bil"]; "dağ" → [].
+  Kullanıcı bu kelimeyi söylediğinde eşleşme CEZALANDIRILIR (false positive önleme).
 - SADECE geçerli JSON döndür, başka metin yok.
 
 Tüm keyword'leri ve açıklamayı TÜRKÇE yaz.`;

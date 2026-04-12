@@ -125,5 +125,6 @@ export function analysisResultToKeywords(result: AnalysisResult): Keyword[] {
     synonyms: kw.synonyms ?? [],
     forms: kw.forms,
     confusability: kw.confusability,
+    negatives: kw.negatives,
   }));
 }

@@ -29,6 +29,11 @@ export interface AnalyzedKeyword {
    * Düşük: "yürüyüş yolu", "bulut"                         → ~0.2
    */
   confusability?: number;
+  /**
+   * Negative keyword list. Söylenen bu kelimeler eşleşmeyi bozar.
+   * Ör: "sis" için ["siz", "his", "sus"]. Gemini'nin bu listeyi üretmesi beklenir.
+   */
+  negatives?: string[];
 }
 
 export interface ImageAnalysisProvider {

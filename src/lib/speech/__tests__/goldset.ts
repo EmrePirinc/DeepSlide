@@ -165,6 +165,26 @@ export const GOLD_SET: GoldCase[] = [
     expected: 'img-snow',
     rationale: 'kar doğru, kır değil',
   },
+  {
+    id: 'C6',
+    category: 'C',
+    scene: [
+      { id: 'img-fog', keywords: [{ text: 'sis', confusability: 0.85, negatives: ['siz', 'his', 'sus'] }] },
+    ],
+    spoken: 'siz de gelin',
+    expected: null,
+    rationale: 'Negatives listesi "siz" içeriyor → sis için skor cezalandırılır, null dönmeli',
+  },
+  {
+    id: 'C7',
+    category: 'C',
+    scene: [
+      { id: 'img-fog', keywords: [{ text: 'sis', confusability: 0.85, negatives: ['siz', 'his'] }] },
+    ],
+    spoken: 'sabahleyin sis vardı',
+    expected: 'img-fog',
+    rationale: 'Negatives listesi var ama "sis" söylendi → normal eşleşme korunur',
+  },
 
   // ========== D: Tek kelime ek varyasyonu ==========
   {

@@ -7,6 +7,7 @@ import { normalizePhrase } from './normalize';
 import { stemPhrase } from './stemmer';
 import { ensembleScore } from './similarity';
 import { KeywordTrie, type TrieEntry } from './trie';
+import { BM25Matcher, reciprocalRankFusion, type BM25Entry } from './bm25';
 
 /**
  * Türkçe keyword eşleştirme motoru — ensemble similarity + stem + normalization.
@@ -37,6 +38,15 @@ interface IndexEntry {
   /** Exact match bonus'u uygulanmalı mı — sadece ana form + synonym. */
   exactEligible: boolean;
   /**
+   * TF-IDF ağırlığı — sahnedeki nadir keyword'ler daha yüksek.
+   * Dinamik threshold hesabında threshold / tfIdfWeight olarak uygulanır:
+   * nadir = kolay tetik, yaygın = zor tetik.
+   * Range: [0.5, 1.5] (clamp).
+   */
+  tfIdfWeight: number;
+  /** Negative keyword listesi (bu listede geçen kelime söylenirse skor cezalandırılır). */
+  negatives: string[];
+  /**
    * Multi-word keyword'ün benzersiz kelime parçasıysa (partial trigger),
    * bu entry kullanılır. Score 0.85 sabit, wordCount ana keyword'ünki kalır.
    * Ama match sırasında threshold'u keyword uzunluğuna göre hesaplarken,
@@ -53,11 +63,14 @@ interface IndexEntry {
  * - Orta (≤5 char) → min 0.80
  * - Uzun (6+) → base threshold
  * - Confusability > 0.7 → +0.10 (max 0.95)
+ * - TF-IDF weight > 1.0 (nadir keyword) → threshold /= weight (daha kolay)
+ *   TF-IDF weight < 1.0 (yaygın keyword) → threshold /= weight (daha zor)
  */
 function dynamicThreshold(
   keywordLength: number,
   confusability: number,
   baseThreshold: number,
+  tfIdfWeight: number = 1.0,
 ): number {
   let t = baseThreshold;
   if (keywordLength <= 3) t = Math.max(t, 0.9);
@@ -66,7 +79,10 @@ function dynamicThreshold(
   if (confusability > 0.7) {
     t = Math.min(0.95, t + 0.1);
   }
-  return t;
+
+  // TF-IDF shift — clamp [0.55, 0.95]
+  const shifted = t / tfIdfWeight;
+  return Math.max(0.55, Math.min(0.95, shifted));
 }
 
 export class KeywordMatcher {
@@ -84,6 +100,12 @@ export class KeywordMatcher {
    * buildIndex'te PASS 3 olarak doldurulur.
    */
   private trie = new KeywordTrie();
+
+  /**
+   * BM25 matcher — hybrid retrieval için ikinci sinyal.
+   * Ensemble ile RRF fusion'a girer.
+   */
+  private bm25 = new BM25Matcher();
 
   /**
    * Görsellerin keyword'lerinden inverted index oluşturur.
@@ -122,6 +144,64 @@ export class KeywordMatcher {
     // (normalized + stemmed) trie'ya yatırır. findUniquePrefix ile
     // kullanıcı henüz kelimeyi bitirmeden benzersiz görsele tetik atılır.
     this.buildStreamingTrie(images);
+
+    // PASS 4: BM25 index — ensemble'a paralel ikinci retrieval sinyali.
+    this.buildBM25Index(images);
+
+    // PASS 5: TF-IDF ağırlıkları — nadir keyword'ler öncelikli.
+    this.computeTfIdfWeights(images);
+  }
+
+  /**
+   * PASS 4 — BM25 index'ini kur. Her keyword için text = ana + synonyms + forms
+   * birleşimi. MiniSearch Türkçe stem + prefix + fuzzy search kullanır.
+   */
+  private buildBM25Index(images: PresentationImage[]): void {
+    const entries: BM25Entry[] = [];
+    for (const image of images) {
+      for (const kw of image.keywords) {
+        const text = [kw.text, ...(kw.synonyms ?? []), ...(kw.forms ?? [])]
+          .filter(Boolean)
+          .join(' ');
+        if (!text) continue;
+        entries.push({
+          id: `${image.id}::${kw.id ?? kw.text}`,
+          imageId: image.id,
+          text,
+        });
+      }
+    }
+    this.bm25.build(entries);
+  }
+
+  /**
+   * PASS 5 — TF-IDF ağırlıkları.
+   * Her keyword'ün stem'lerinin document frequency'si sayılır (DF = keyword'ün
+   * paylaşıldığı image sayısı). IDF = log(N/DF), weight = clamp(idf/log(N), 0.5, 1.5).
+   * Nadir keyword'ler (DF=1) yüksek weight, tüm sahneye yayılmış keyword'ler düşük.
+   */
+  private computeTfIdfWeights(images: PresentationImage[]): void {
+    const N = Math.max(1, images.length);
+    const logN = Math.log(N + 1);
+
+    // Her unique stem hangi imageId set'ine ait?
+    const stemToImages = new Map<string, Set<string>>();
+    for (const image of images) {
+      for (const kw of image.keywords) {
+        const mainStem = normalizePhrase(stemPhrase(normalizePhrase(kw.text)));
+        if (!mainStem) continue;
+        if (!stemToImages.has(mainStem)) stemToImages.set(mainStem, new Set());
+        stemToImages.get(mainStem)!.add(image.id);
+      }
+    }
+
+    // Her entry için TF-IDF weight
+    for (const entry of this.allEntries) {
+      const df = stemToImages.get(entry.stemmed)?.size ?? 1;
+      const idf = Math.log((N + 1) / df);
+      const normalized = logN > 0 ? idf / logN : 1;
+      entry.tfIdfWeight = Math.max(0.5, Math.min(1.5, normalized));
+    }
   }
 
   /**
@@ -177,6 +257,7 @@ export class KeywordMatcher {
     ].filter((t) => t && t.trim().length > 0);
 
     const confusability = kw.confusability ?? 0.2;
+    const negatives = (kw.negatives ?? []).map((n) => normalizePhrase(n)).filter(Boolean);
     const mainNormalized = normalizePhrase(kw.text);
     const mainLength = mainNormalized.length;
     const mainWordCount = mainNormalized.split(/\s+/).length;
@@ -194,6 +275,8 @@ export class KeywordMatcher {
         keywordLength: mainLength,
         wordCount: mainWordCount,
         exactEligible: true,
+        tfIdfWeight: 1.0, // PASS 5'te hesaplanır
+        negatives,
       };
 
       // Normalized form ile index'e ekle (exact match lookup)
@@ -293,6 +376,8 @@ export class KeywordMatcher {
             keywordLength: mainNormalized.length,
             wordCount: 1,
             exactEligible: false,
+            tfIdfWeight: 1.0, // PASS 5
+            negatives: (kw.negatives ?? []).map((n) => normalizePhrase(n)).filter(Boolean),
             isPartialTrigger: true,
           };
 
@@ -377,11 +462,12 @@ export class KeywordMatcher {
             score = Math.min(1.0, 1.0 + wordBonus);
           }
 
-          // Threshold kontrolü
+          // Threshold kontrolü (TF-IDF shift dahil)
           const th = dynamicThreshold(
             entry.keywordLength,
             entry.confusability,
             baseThreshold,
+            entry.tfIdfWeight,
           );
           if (score >= th) {
             results.push({
@@ -431,6 +517,7 @@ export class KeywordMatcher {
           entry.keywordLength,
           entry.confusability,
           baseThreshold,
+          entry.tfIdfWeight,
         );
 
         let bestScore = 0;
@@ -473,8 +560,82 @@ export class KeywordMatcher {
       }
     }
 
+    // ========== 3. NEGATIVE PENALTY ==========
+    // Kullanıcı eğer entry.negatives listesindeki bir kelimeyi söylemişse
+    // (exact match), final skor 0.4 puan cezalandırılır. sis/siz, bal/bel
+    // gibi kasıtlı false positive'ları keser.
+    const NEGATIVE_PENALTY = 0.4;
+    const penalized: MatchResult[] = results
+      .map((r) => {
+        // r.imageIds[0] için entry bulup negatives kontrol et
+        const primaryId = r.imageIds[0];
+        const entry = this.allEntries.find((e) =>
+          e.imageIds.has(primaryId) && e.normalized === r.keyword,
+        );
+        if (!entry || entry.negatives.length === 0) return r;
+
+        let maxNeg = 0;
+        for (const neg of entry.negatives) {
+          for (const sw of normalizedWords) {
+            if (sw === neg) maxNeg = 1;
+          }
+        }
+        if (maxNeg === 0) return r;
+        return { ...r, score: Math.max(0, r.score - NEGATIVE_PENALTY * maxNeg) };
+      })
+      .filter((r) => r.score > 0);
+
+    // ========== 4. BM25 + RRF FUSION ==========
+    // Mevcut string ensemble sonucunu BM25 sonucuyla RRF ile birleştir.
+    // BM25 query: tüm spoken words join.
+    const bm25Query = normalizedWords.join(' ');
+    const bm25Results = this.bm25.search(bm25Query);
+
+    if (bm25Results.length > 0) {
+      // Ensemble sonucunu rank formatına çevir
+      penalized.sort((a, b) => b.score - a.score);
+      const ensembleRanked = penalized.map((r, rank) => ({
+        imageId: r.imageIds[0],
+        rank,
+      }));
+      const bm25Ranked = bm25Results.map((r, rank) => ({
+        imageId: r.imageId,
+        rank,
+      }));
+
+      const fused = reciprocalRankFusion([ensembleRanked, bm25Ranked]);
+
+      // Fused sıralamayı penalized listesine yansıt — BM25'ten gelen ama
+      // ensemble'da olmayan image'lar da dahil ama sadece ensemble skoru
+      // threshold üstündekiler korunur. Yeni ID'ler için skor minimum
+      // threshold + 0.01 atanır (borderline ama geçer).
+      const penalizedByImage = new Map<string, MatchResult>();
+      for (const p of penalized) {
+        penalizedByImage.set(p.imageIds[0], p);
+      }
+
+      const fusedResults: MatchResult[] = [];
+      for (const f of fused) {
+        const existing = penalizedByImage.get(f.imageId);
+        if (existing) {
+          fusedResults.push(existing);
+        }
+        // NOT: Fusion sadece sıralamaya etki ediyor; BM25 yeni image
+        // önermezse ensemble sonuçları korunur. Yeni image'ları atlıyoruz
+        // çünkü threshold kontrolünden geçmediler.
+      }
+
+      // Eksik kalan penalized entry'leri sona ekle
+      const seenFused = new Set(fusedResults.map((r) => r.imageIds[0]));
+      for (const p of penalized) {
+        if (!seenFused.has(p.imageIds[0])) fusedResults.push(p);
+      }
+
+      return fusedResults;
+    }
+
     // Skora göre sırala (yüksekten düşüğe)
-    return results.sort((a, b) => b.score - a.score);
+    return penalized.sort((a, b) => b.score - a.score);
   }
 
   /**

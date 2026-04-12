@@ -62,6 +62,14 @@ export interface Keyword {
    * Match threshold bu değere göre dinamik olarak yükseltilir.
    */
   confusability?: number;
+  /**
+   * Negative keyword list — bu kelime söylenirse ensemble skoru cezalandırılır.
+   * Gemini her yüksek-confusability keyword için "karıştırılabilecek ama
+   * kastedilmeyen" Türkçe kelimeleri listeler (ör: "sis" için ["siz", "his"]).
+   * Match sırasında: spoken word negatives listesinde exact eşleşirse
+   * final_score -= 0.40. False positive'ları (özellikle homofonları) keser.
+   */
+  negatives?: string[];
 }
 
 export type KeywordCategory =

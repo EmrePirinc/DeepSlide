@@ -63,6 +63,12 @@ export function parseAnalysisResponse(raw: string): AnalysisResult {
       const confusability = typeof kw.confusability === 'number'
         ? Math.max(0, Math.min(1, kw.confusability))
         : undefined;
+      const negatives = Array.isArray(kw.negatives)
+        ? (kw.negatives as unknown[])
+            .filter((s): s is string => typeof s === 'string' && s.length > 0)
+            .map((s) => s.toLowerCase().trim())
+            .slice(0, 5)
+        : undefined;
 
       return {
         text: String(kw.text).toLowerCase().trim(),
@@ -75,6 +81,7 @@ export function parseAnalysisResponse(raw: string): AnalysisResult {
         synonyms,
         forms,
         confusability,
+        negatives,
       } satisfies AnalyzedKeyword;
     })
     .slice(0, 15);
