@@ -2,6 +2,35 @@
 
 # DeepSlide — CLAUDE.md
 
+## 🎯 Keyword Matching v2 — Aktif WBS
+
+> **Kaynaklar:**
+> - Araştırma: `/Users/emrepirinc/Documents/DeepSlide/RESEARCH_KEYWORD_MATCHING.md`
+> - WBS:       `/Users/emrepirinc/Documents/DeepSlide/WBS_KEYWORD_MATCHING_V2.md`
+> - Baseline:  commit `f2ae3dd` (gold set F1 = 1.000 / 30 case)
+
+**Durum:** Planning tamamlandı. İlk görev seçimi bekliyor.
+**Önerilen ilk görev (paralel başlangıç):**
+- `T-1.1.1.1.1` — Zoom flicker debug logger (Sprint 1, flicker RCA)
+- `T-1.1.4.1.1` — Trie + unique-prefix data structure (Sprint 1, bağımsız)
+
+**Sprint özeti:**
+- Sprint 1: 8 task, ~35 saat — Quick wins + flicker fix (QG1)
+- Sprint 2: 8 task, ~32 saat — Semantic floor (negatives, BM25, TF-IDF, real gold set) (QG2)
+- Sprint 3: 8 task, ~35 saat — Embedding rerank (mE5-small, cache, adaptive threshold) (QG3)
+- Sprint 4: 4 task, ~15 saat — Validation, grid search v2, deploy, telemetry (QG4)
+
+**Hedefler:**
+- Sentetik gold set F1 ≥ 0.95 (mevcut 1.000)
+- Gerçek dünya F1 ≥ 0.92 (başlangıç ~0.85 tahmin)
+- Zoom flicker count = 0
+- Latency p95 <50 ms
+- Ana bundle artışı ≤15 KB, lazy embedding chunk 45 MB
+
+---
+
+
+
 ## Proje Özeti
 DeepSlide: AI destekli, ses kontrolüyle çalışan Prezi-tarzı sunum uygulaması.
 - Görseller Gemini ile analiz edilir → keyword çıkarılır → ses tanımayla zoom tetiklenir
