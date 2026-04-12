@@ -7,30 +7,26 @@ import { createAnalysisProvider } from './providerFactory';
 import { resizeImage, blobToBase64 } from '@/lib/utils/imageProcessing';
 import { getImageBlob } from '@/lib/db/images';
 
-const MAX_RETRIES = 3;
+const MAX_RETRIES = 2;  // 3 → 2: Hızlı fail, hızlı retry
 
-// Yerel modeller için küçük görsel göndermek yeterli ve çok daha hızlı
-const ANALYSIS_WIDTH_LOCAL = 512;  // Yerel model: 512px (hız için)
-const ANALYSIS_WIDTH_API = 1024;   // Cloud API: 1024px (kalite için)
+// 1024 → 512: %75 daha az data, %400 hızlı upload
+// Keyword çıkarma için 512px yeterli (Gemini vision)
+const ANALYSIS_WIDTH_API = 512;
 
-const PROVIDER_CONFIG: Record<string, { concurrency: number; delayMs: number; backoffMs: number; imageWidth: number }> = {
+const PROVIDER_CONFIG: Record<string, { concurrency: number; delayMs: number; backoffMs: number; rateLimitBackoffMs: number; imageWidth: number }> = {
   gemini: {
-    concurrency: 2,
-    delayMs: 4000,
-    backoffMs: 4000,
+    concurrency: 5,       // 1 → 5: Paralel işlem (5 görsel aynı anda)
+    delayMs: 0,           // 5000 → 0: Paralel olduğu için gereksiz
+    backoffMs: 2000,      // 4000 → 2000: Hızlı retry
+    rateLimitBackoffMs: 30000, // 65s → 30s: Daha agresif recovery
     imageWidth: ANALYSIS_WIDTH_API,
   },
-  qwen: {
-    concurrency: 2,       // Qwen 9B hafif, 2 paralel kaldırır
-    delayMs: 200,
+  ollama: {
+    concurrency: 3,       // 1 → 3: Yerel GPU'yu daha iyi kullan
+    delayMs: 0,
     backoffMs: 1000,
-    imageWidth: ANALYSIS_WIDTH_LOCAL,
-  },
-  gemma: {
-    concurrency: 2,       // Gemma E2B hafif, 2 paralel çalışır
-    delayMs: 200,
-    backoffMs: 1000,
-    imageWidth: ANALYSIS_WIDTH_LOCAL,
+    rateLimitBackoffMs: 3000,
+    imageWidth: ANALYSIS_WIDTH_API,
   },
 };
 
@@ -46,9 +42,10 @@ export async function analyzeBatch(
   providerType: AIProviderType,
   onProgress: (progress: BatchProgress) => void,
   language: string = 'tr',
-  shouldAbort?: () => boolean
+  shouldAbort?: () => boolean,
+  ollamaModel?: string
 ): Promise<void> {
-  const provider = createAnalysisProvider(providerType, language);
+  const provider = createAnalysisProvider(providerType, language, 3, ollamaModel);
   const config = PROVIDER_CONFIG[providerType] ?? PROVIDER_CONFIG.gemini;
   const queue = [...images];
 
@@ -87,9 +84,9 @@ export async function analyzeBatch(
             lastError.includes('403');
           if (isPermanentError) break;
 
-          const isRateLimit = lastError.includes('429') || lastError.includes('RESOURCE_EXHAUSTED');
+          const isRateLimit = lastError.includes('429') || lastError.includes('RESOURCE_EXHAUSTED') || lastError.includes('Quota exceeded');
           const delay = isRateLimit
-            ? config.backoffMs * Math.pow(3, attempt)
+            ? config.rateLimitBackoffMs  // flat 65s wait — quota resets after 1 min
             : config.backoffMs * Math.pow(2, attempt);
 
           if (attempt < MAX_RETRIES - 1) {

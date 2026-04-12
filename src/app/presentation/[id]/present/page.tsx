@@ -37,6 +37,10 @@ import type { LiveStreamStatus } from '@/lib/livestream/liveStreamService';
 import { useSpeechPaywall } from '@/hooks/useSpeechPaywall';
 import { getTheme } from '@/lib/themes/presets';
 import type { ThemeId } from '@/lib/themes/types';
+import { QRShareOverlay } from '@/components/presentation/QRShareOverlay';
+import { PrePresentationCheck } from '@/components/presentation/PrePresentationCheck';
+import { useAnalyticsStore } from '@/stores/analyticsStore';
+import { saveSession } from '@/lib/db/analytics';
 
 type PresentMode = 'cover' | 'overview' | 'focused';
 type KvkkPendingFeature = 'subtitle' | 'summary' | null;
@@ -49,7 +53,7 @@ export default function PresentationModePage({
   const { id } = use(params);
   const router = useRouter();
 
-  const { isPremium } = useAuth();
+  const { isPremium, user } = useAuth();
 
   const {
     currentPresentation,
@@ -73,6 +77,12 @@ export default function PresentationModePage({
   const [liveStatus, setLiveStatus] = useState<LiveStreamStatus>('idle');
   const [subtitleEnabled, setSubtitleEnabled] = useState(false);
   const [subtitleLang, setSubtitleLang] = useState<SubtitleLanguage>('tr');
+  const [showQR, setShowQR] = useState(false);
+  const [showPreCheck, setShowPreCheck] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState(false);
+  const [passwordUnlocked, setPasswordUnlocked] = useState(false);
+  const analytics = useAnalyticsStore();
 
   const { isPaused, startPresentation, stopPresentation, togglePause } =
     usePresentationMode();
@@ -130,13 +140,23 @@ export default function PresentationModePage({
     }
   }, [uploadStatus, showPostModal]);
 
-  // Kapaktan çık → overview + ses başlat
-  const handleCoverContinue = useCallback(() => {
+  // Gerçekten sunuma geç (pre-check onayından sonra da çağrılır)
+  const startOverview = useCallback(() => {
     setMode('overview');
     if (settings) {
       startSpeech(settings.speechProvider, settings.language);
     }
   }, [settings, startSpeech]);
+
+  // Kapaktan çık → önce pre-check göster (keyword'leri varsa)
+  const handleCoverContinue = useCallback(() => {
+    const hasKeywords = currentPresentation?.images.some((img) => img.keywords.length > 0);
+    if (hasKeywords && currentPresentation?.images.length) {
+      setShowPreCheck(true);
+    } else {
+      startOverview();
+    }
+  }, [currentPresentation, startOverview]);
 
   // Overview dönüş timeout'u yönet
   const resetOverviewTimeout = useCallback(() => {
@@ -222,6 +242,21 @@ export default function PresentationModePage({
     stopSpeech();
     stopPresentation();
     setFocusedImage(null);
+
+    // Save analytics session
+    const result = analytics.endSession();
+    if (result && result.records.length > 0) {
+      saveSession({
+        id: result.sessionId,
+        presentationId: result.presentationId,
+        startedAt: result.startedAt,
+        durationMs: result.durationMs,
+        slideRecords: result.records,
+        totalMatches: result.totalMatches,
+        totalSlides: currentPresentation?.images.length ?? 0,
+      }).catch(() => {/* ignore */});
+    }
+
     // Kayıt devam ediyorsa durdur
     if (recordingState === 'recording') {
       await stopRecording();
@@ -229,7 +264,7 @@ export default function PresentationModePage({
       return;
     }
     router.push(`/presentation/${id}`);
-  }, [stopSpeech, stopPresentation, setFocusedImage, router, id, recordingState, stopRecording]);
+  }, [stopSpeech, stopPresentation, setFocusedImage, router, id, recordingState, stopRecording, analytics, currentPresentation]);
 
   // Alt yazı toggle — KVKK gerektiriyor (Pro Deepgram için)
   const handleToggleSubtitle = useCallback(() => {
@@ -304,6 +339,37 @@ export default function PresentationModePage({
     setLiveStatus(liveStreamService.getStatus());
   }, []);
 
+  // Aktif slayt bilgisini localStorage'a yaz (Presenter View için) + analytics tracking
+  useEffect(() => {
+    if (!focusedImageId || !currentPresentation) return;
+    const slideIndex = currentPresentation.images.findIndex((img) => img.id === focusedImageId);
+    if (slideIndex === -1) return;
+    try {
+      localStorage.setItem(
+        `deepslide_active_slide_${id}`,
+        JSON.stringify({ slideId: focusedImageId, slideIndex }),
+      );
+    } catch { /* ignore quota errors */ }
+    // Analytics: track slide focus (store'dan direkt çağır, dependency döngüsünü önle)
+    useAnalyticsStore.getState().focusSlide(focusedImageId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusedImageId, currentPresentation?.id, id]);
+
+  // Analytics: start session when presentation starts
+  useEffect(() => {
+    if (!currentPresentation) return;
+    useAnalyticsStore.getState().startSession(currentPresentation.id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPresentation?.id]);
+
+  // Analytics: increment match count on keyword match
+  useEffect(() => {
+    if (matches.length > 0 && mode !== 'cover') {
+      analytics.incrementMatch();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matches]);
+
   // Cleanup
   useEffect(() => {
     return () => {
@@ -349,6 +415,48 @@ export default function PresentationModePage({
     return (
       <div className="fixed inset-0 bg-black flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  // Password gate
+  if (currentPresentation.settings.passwordProtected && !passwordUnlocked) {
+    return (
+      <div className="fixed inset-0 bg-black flex items-center justify-center p-4">
+        <div className="bg-zinc-900 rounded-2xl p-8 w-full max-w-sm space-y-4 text-white">
+          <p className="text-lg font-semibold text-center">🔒 Şifreli Sunum</p>
+          <p className="text-sm text-white/60 text-center">Bu sunuma erişmek için şifre gerekiyor.</p>
+          <input
+            type="password"
+            placeholder="Sunum şifresi"
+            value={passwordInput}
+            onChange={(e) => { setPasswordInput(e.target.value); setPasswordError(false); }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                if (passwordInput === currentPresentation.settings.sharePassword) {
+                  setPasswordUnlocked(true);
+                } else {
+                  setPasswordError(true);
+                }
+              }
+            }}
+            className="w-full rounded-xl bg-white/10 border border-white/20 px-4 py-2.5 text-sm outline-none focus:ring-2 ring-white/30"
+            autoFocus
+          />
+          {passwordError && <p className="text-xs text-red-400 text-center">Hatalı şifre</p>}
+          <button
+            onClick={() => {
+              if (passwordInput === currentPresentation.settings.sharePassword) {
+                setPasswordUnlocked(true);
+              } else {
+                setPasswordError(true);
+              }
+            }}
+            className="w-full rounded-xl bg-white text-black py-2.5 text-sm font-semibold hover:bg-white/90 transition"
+          >
+            Giriş
+          </button>
+        </div>
       </div>
     );
   }
@@ -531,6 +639,24 @@ export default function PresentationModePage({
             />
           )}
 
+          {/* QR Paylaş */}
+          <button
+            onClick={() => setShowQR(true)}
+            className="rounded-xl px-3 py-2 text-xs font-medium transition bg-white/10 text-white/70 hover:text-white hover:bg-white/20"
+            title="QR Kod ile Paylaş"
+          >
+            QR
+          </button>
+
+          {/* Presenter View */}
+          <button
+            onClick={() => window.open(`/presentation/${id}/notes`, '_blank', 'noopener')}
+            className="rounded-xl px-3 py-2 text-xs font-medium transition bg-white/10 text-white/70 hover:text-white hover:bg-white/20"
+            title="Presenter View (Notlar)"
+          >
+            📋
+          </button>
+
           {/* Canlı yayın toggle (Pro) */}
           {isPremium && (
             <button
@@ -607,6 +733,30 @@ export default function PresentationModePage({
             if (recordingState === 'idle') {
               router.push(`/presentation/${id}`);
             }
+          }}
+        />
+      )}
+
+      {/* QR Paylaşım Overlay */}
+      <QRShareOverlay
+        url={typeof window !== 'undefined' ? `${window.location.origin}/presentation/${id}/present` : `/presentation/${id}/present`}
+        userId={user?.uid}
+        isOpen={showQR}
+        onClose={() => setShowQR(false)}
+      />
+
+      {/* Pre-Presentation Check */}
+      {showPreCheck && currentPresentation && (
+        <PrePresentationCheck
+          images={currentPresentation.images}
+          presentationId={id}
+          onStart={() => {
+            setShowPreCheck(false);
+            startOverview();
+          }}
+          onSkip={() => {
+            setShowPreCheck(false);
+            startOverview();
           }}
         />
       )}
