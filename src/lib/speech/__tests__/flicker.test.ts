@@ -71,8 +71,8 @@ describe('AnimationOrchestrator — flicker mitigation', () => {
     expect(lastFocused).toBe('img-A');
     const notifyBefore = notifyCount;
 
-    // 500 ms içinde (hold window 1000 ms) B skoru 0.78 < bar 0.9
-    vi.advanceTimersByTime(500);
+    // Hold window 2500 ms, 1000 ms içinde B skoru 0.78 < bar 0.95
+    vi.advanceTimersByTime(1000);
     orchestrator.focusImage('img-B', 0.78);
 
     expect(lastFocused).toBe('img-A'); // değişmedi
@@ -81,17 +81,17 @@ describe('AnimationOrchestrator — flicker mitigation', () => {
 
   it('F4: within hold window, score >= override bar takes over', () => {
     orchestrator.focusImage('img-A', 1.0);
-    vi.advanceTimersByTime(500);
+    vi.advanceTimersByTime(1000);
 
-    // Skor 0.92 > bar 0.9 → devralır
-    orchestrator.focusImage('img-B', 0.92);
+    // Skor 0.96 > bar 0.95 → devralır
+    orchestrator.focusImage('img-B', 0.96);
     expect(lastFocused).toBe('img-B');
   });
 
   it('F5: after hold window, weak focus is allowed to take over', () => {
     orchestrator.focusImage('img-A', 1.0);
-    // 1500 ms sonra hold süresi dolmuş
-    vi.advanceTimersByTime(1500);
+    // 3000 ms sonra hold süresi (2500ms) dolmuş
+    vi.advanceTimersByTime(3000);
 
     // Now B can take over with 0.75 (normally below bar)
     orchestrator.focusImage('img-B', 0.75);

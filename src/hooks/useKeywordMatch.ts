@@ -119,12 +119,17 @@ export function useKeywordMatch(threshold: number = 0.7) {
     recentFocusRef.current.set(prefixMatch.imageIds[0], Date.now());
   }, [interimTranscript, threshold]);
 
-  // Final + interim → full match (N-gram + fuzzy + locality + cooldown)
+  // FINAL transcript → full match (N-gram + fuzzy + locality + cooldown)
+  //
+  // KRİTİK: Bu effect SADECE final transcript üzerinde çalışır. Interim üzerinde
+  // çalışmaz çünkü WebSpeech interim'i çok gürültülü — nefes, çevre sesi, mic
+  // noise sürekli yanlış kelime tahminleri üretir ve bunlar ghost zoom
+  // (sahte focus override) yaratır. Hızlı tepki için streaming prefix effect'i
+  // (yukarıda) interim'in son token'ını dinliyor zaten.
   useEffect(() => {
-    const text = interimTranscript || transcript;
-    if (!text) return;
+    if (!transcript) return;
 
-    const words = text.toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
+    const words = transcript.toLowerCase().split(/\s+/).filter((w) => w.length >= 2);
     const recentWords = words.slice(-5);
     if (recentWords.length === 0) return;
 
@@ -207,7 +212,7 @@ export function useKeywordMatch(threshold: number = 0.7) {
     void (async () => {
       let reranked = boosted;
       try {
-        reranked = await matcher.rerankWithEmbedding(text, boosted);
+        reranked = await matcher.rerankWithEmbedding(transcript, boosted);
       } catch {
         return;
       }
@@ -236,7 +241,7 @@ export function useKeywordMatch(threshold: number = 0.7) {
       recentFocusRef.current.set(rerankedTop.imageIds[0], Date.now());
       useSpeechStore.getState().setMatches(reranked);
     })();
-  }, [interimTranscript, transcript, threshold, interimConfidence]);
+  }, [transcript, threshold, interimConfidence]);
 
   // Final transcript geldiğinde history reset
   useEffect(() => {

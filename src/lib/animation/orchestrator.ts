@@ -45,14 +45,19 @@ export class AnimationOrchestrator {
    * Bir focus'a odaklandıktan sonra minimum ne kadar süre o focus'u
    * korumak zorundayız. Bu süre içinde YENİ bir focusImage çağrısı
    * skor FOCUS_OVERRIDE_BAR üstünde değilse yok sayılır.
+   *
+   * 2500ms: ortalama bir kelime + kısa duraksama süresi. ASR noise'un
+   * "sahte final" üretmesine karşı koruma — kullanıcı bir kelimede zoom
+   * yapınca sonraki ~2.5 sn'de başka bir image'a düşmez.
    */
-  private readonly MIN_FOCUS_HOLD_MS = 1000;
+  private readonly MIN_FOCUS_HOLD_MS = 2500;
 
   /**
    * Hold süresi içinde override için gereken minimum skor.
-   * Yani "çok güçlü bir sinyal gelmeden" focus değişmez.
+   * Neredeyse tam eşleşme (0.95+) yoksa yeni focus devralamaz.
+   * Tam eşleşme (1.0) veya multi-word bonus'lu eşleşme override edebilir.
    */
-  private readonly FOCUS_OVERRIDE_BAR = 0.9;
+  private readonly FOCUS_OVERRIDE_BAR = 0.95;
 
   /**
    * Değişiklik callback'i ayarla.
