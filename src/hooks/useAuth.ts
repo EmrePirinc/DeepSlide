@@ -80,35 +80,18 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    console.log('[AUTH] useAuth mount — configured:', configured);
-    console.log('[AUTH] auth.currentUser at mount:', auth?.currentUser?.uid ?? 'null');
-    console.log('[AUTH] auth.app.options:', JSON.stringify({
-      authDomain: auth?.app?.options?.authDomain,
-      projectId: auth?.app?.options?.projectId,
-    }));
-    if (typeof window !== 'undefined') {
-      const pendingKeys = Object.keys(sessionStorage).filter((k) => k.includes('firebase'));
-      console.log('[AUTH] sessionStorage firebase keys:', pendingKeys.join(', ') || 'yok');
-    }
-    if (!configured) {
-      console.warn('[AUTH] Firebase NOT configured — env vars eksik');
-      return;
-    }
+    if (!configured) return;
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      console.log('[AUTH] onAuthStateChanged fired — user:', user?.uid ?? 'null', user?.email ?? '');
       if (!user) {
         setState({ user: null, isLoading: false, isPremium: false, profile: DEFAULT_PROFILE });
         return;
       }
 
-      // 1) User'ı HEMEN set et — login sayfasının redirect'i bloklanmasın
-      console.log('[AUTH] User state hemen set ediliyor (profil sonra yüklenecek)');
+      // User'ı önce set et — Firestore profil okuması başarısız olsa da auth çalışsın
       setState({ user, isLoading: false, isPremium: false, profile: DEFAULT_PROFILE });
 
-      // 2) Profil arka planda yüklensin — başarısız olsa da auth çalışır
       try {
-        console.log('[AUTH] Profil okunuyor (background):', user.uid);
         const profileDoc = await getDoc(doc(db, 'profiles', user.uid));
         let profileData: UserProfile = DEFAULT_PROFILE;
 
@@ -124,18 +107,15 @@ export function useAuth() {
             currentPeriodEnd: data.currentPeriodEnd,
           };
           profileData = await resetMonthlyCounterIfNeeded(user.uid, profileData);
-        } else {
-          console.warn('[AUTH] Profil dokümanı yok — DEFAULT kullanılıyor');
         }
 
-        console.log('[AUTH] Profil OK, state güncelleniyor — plan:', profileData.plan);
         setState((prev) => ({
           ...prev,
           isPremium: profileData.plan === 'pro',
           profile: profileData,
         }));
-      } catch (err) {
-        console.error('[AUTH] Profil okuma hatası (auth yine de çalışır):', err);
+      } catch {
+        /* ignore — DEFAULT_PROFILE ile devam */
       }
     });
 
@@ -160,24 +140,19 @@ export function useAuth() {
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
-    console.log('[AUTH] signInWithGoogle çağrıldı — popup açılıyor');
     const provider = new GoogleAuthProvider();
     try {
       const result = await signInWithPopup(auth, provider);
-      console.log('[AUTH] signInWithPopup OK — uid:', result.user.uid);
       await ensureGoogleProfile(result.user);
-      console.log('[AUTH] ensureGoogleProfile OK');
     } catch (err) {
       const code = (err as { code?: string })?.code ?? '';
-      console.error('[AUTH] signInWithPopup HATASI:', code, err);
-      // Popup engellenirse veya COOP altında çalışmazsa redirect'e fallback
+      // Popup engellenirse redirect'e fallback
       if (
         code === 'auth/popup-blocked' ||
         code === 'auth/popup-closed-by-user' ||
         code === 'auth/cancelled-popup-request' ||
         code === 'auth/operation-not-supported-in-this-environment'
       ) {
-        console.warn('[AUTH] Popup başarısız → redirect fallback');
         await signInWithRedirect(auth, provider);
         return;
       }
@@ -185,29 +160,21 @@ export function useAuth() {
     }
   }, [ensureGoogleProfile]);
 
-  // Redirect dönüşünü yakala
+  // Redirect dönüşünü yakala (popup engellenip fallback olduysa)
   useEffect(() => {
     if (!configured) return;
-    console.log('[AUTH] getRedirectResult kontrolü başladı');
     getRedirectResult(auth)
       .then((result) => {
-        console.log('[AUTH] getRedirectResult sonuç:', result?.user?.uid ?? 'null');
         if (result?.user) {
-          ensureGoogleProfile(result.user)
-            .then(() => console.log('[AUTH] Profil oluşturma OK'))
-            .catch((err) => console.error('[AUTH] Profil oluşturma hatası:', err));
-        } else {
-          // Stale pendingRedirect key'i temizle — eski başarısız redirect denemeleri popup'ı bozmasın
-          if (typeof window !== 'undefined') {
-            const stale = Object.keys(sessionStorage).filter((k) => k.startsWith('firebase:pendingRedirect'));
-            if (stale.length > 0) {
-              console.warn('[AUTH] Stale pendingRedirect key temizleniyor:', stale.join(','));
-              stale.forEach((k) => sessionStorage.removeItem(k));
-            }
-          }
+          ensureGoogleProfile(result.user).catch(() => {/* ignore */});
+        } else if (typeof window !== 'undefined') {
+          // Stale pendingRedirect key'i temizle
+          Object.keys(sessionStorage)
+            .filter((k) => k.startsWith('firebase:pendingRedirect'))
+            .forEach((k) => sessionStorage.removeItem(k));
         }
       })
-      .catch((err) => console.error('[AUTH] getRedirectResult hatası:', err));
+      .catch(() => {/* ignore */});
   }, [configured, ensureGoogleProfile]);
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {

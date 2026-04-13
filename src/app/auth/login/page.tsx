@@ -8,7 +8,6 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { useAuth } from '@/hooks/useAuth';
-import { AuthDebugPanel } from '@/components/debug/AuthDebugPanel';
 
 export default function LoginPage() {
   return (
@@ -25,11 +24,7 @@ function LoginContent() {
   const { user, signInWithGoogle, signInWithEmail } = useAuth();
 
   useEffect(() => {
-    console.log('[LOGIN] user değişti:', user?.uid ?? 'null', '→ redirect target:', redirect);
-    if (user) {
-      console.log('[LOGIN] router.push çağrılıyor:', redirect);
-      router.push(redirect);
-    }
+    if (user) router.push(redirect);
   }, [user, router, redirect]);
 
   const [email, setEmail] = useState('');
@@ -52,20 +47,16 @@ function LoginContent() {
   };
 
   const handleGoogleLogin = async () => {
-    console.log('[LOGIN] handleGoogleLogin tıklandı');
     try {
       await signInWithGoogle();
-      console.log('[LOGIN] signInWithGoogle resolved (redirect olduysa burası çalışmaz)');
       router.push(redirect);
     } catch (err) {
-      console.error('[LOGIN] handleGoogleLogin HATASI:', err);
       setError(err instanceof Error ? err.message : 'Google giriş hatası');
     }
   };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
-      <AuthDebugPanel />
       <div className="w-full max-w-md glass-card rounded-2xl border border-white/5 p-8 space-y-6">
         {/* Logo & Title */}
         <div className="text-center">
