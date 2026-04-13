@@ -26,33 +26,53 @@ self.addEventListener('message', async (event: MessageEvent<WorkerRequest>) => {
     });
     const totalSlides = parsed.slides.length;
 
-    // Debug — ilk slaytın ham verisi (büyük base64 image'ları temizlenmiş)
-    const firstSlide = parsed.slides[0];
-    if (firstSlide) {
-      const sanitize = (obj: unknown): unknown => {
-        if (typeof obj !== 'object' || obj === null) return obj;
-        if (Array.isArray(obj)) return obj.map(sanitize);
-        const out: Record<string, unknown> = {};
-        for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-          if (k === 'base64' && typeof v === 'string' && v.length > 100) {
-            out[k] = v.slice(0, 80) + '…';
-          } else {
-            out[k] = sanitize(v);
-          }
+    // Debug — ilk 3 slaytın ham verisi (base64 kısaltılmış)
+    const sanitize = (obj: unknown): unknown => {
+      if (typeof obj !== 'object' || obj === null) return obj;
+      if (Array.isArray(obj)) return obj.map(sanitize);
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+        if ((k === 'base64' || k === 'blob') && typeof v === 'string' && v.length > 100) {
+          out[k] = v.slice(0, 60) + `… (${v.length})`;
+        } else {
+          out[k] = sanitize(v);
         }
-        return out;
-      };
+      }
+      return out;
+    };
+    // eslint-disable-next-line no-console
+    console.log('[PPTX WORKER] parsed.size:', parsed.size);
+    // eslint-disable-next-line no-console
+    console.log('[PPTX WORKER] total slides:', totalSlides);
+    for (let i = 0; i < Math.min(3, totalSlides); i++) {
+      const s = parsed.slides[i];
       // eslint-disable-next-line no-console
-      console.log('[PPTX WORKER] parsed.size:', parsed.size);
+      console.log(`[PPTX WORKER] slide[${i}] fill:`, s.fill, 'elementCount:', (s.elements ?? []).length, 'types:', countTypes(s.elements ?? []));
       // eslint-disable-next-line no-console
-      console.log('[PPTX WORKER] slide[0] ilk 5 element:', sanitize((firstSlide.elements ?? []).slice(0, 5)));
-      // eslint-disable-next-line no-console
-      console.log('[PPTX WORKER] slide[0].fill:', firstSlide.fill);
-      // eslint-disable-next-line no-console
-      console.log('[PPTX WORKER] slide[0] element type counts:', countTypes(firstSlide.elements ?? []));
-      // eslint-disable-next-line no-console
-      console.log('[PPTX WORKER] slide[0] layoutElements count:', (firstSlide.layoutElements ?? []).length);
+      console.log(`[PPTX WORKER] slide[${i}] tüm element'lerin özeti:`, (s.elements ?? []).map((el) => {
+        const base: Record<string, unknown> = {
+          type: el.type,
+          left: Math.round(('left' in el ? el.left : 0) as number),
+          top: Math.round(('top' in el ? el.top : 0) as number),
+          w: Math.round(('width' in el ? el.width : 0) as number),
+          h: Math.round(('height' in el ? el.height : 0) as number),
+        };
+        if (el.type === 'shape') {
+          base.shapType = (el as { shapType?: string }).shapType;
+          base.fillType = (el as { fill?: { type?: string } }).fill?.type;
+          base.hasContent = !!(el as { content?: string }).content;
+        }
+        if (el.type === 'text') {
+          base.content = ((el as { content?: string }).content || '').slice(0, 60);
+        }
+        if (el.type === 'image') {
+          base.hasBase64 = !!(el as { base64?: string }).base64;
+        }
+        return base;
+      }));
     }
+    // eslint-disable-next-line no-console
+    console.log('[PPTX WORKER] slide[1] ilk element tam sanitize:', sanitize(parsed.slides[1]?.elements?.[0]));
 
     post({
       kind: 'progress',

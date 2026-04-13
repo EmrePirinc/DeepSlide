@@ -153,8 +153,15 @@ function mapElement(
   switch (el.type) {
     case 'text':
       return [mapText(el, ctx, isLayout)];
-    case 'shape':
+    case 'shape': {
+      // Shape'in fill'i image ise aslında bir resim (PPTX'te en yaygın desen:
+      // oval/dikdörtgen şekil + picture fill). ImageObject'e çevir.
+      if (el.fill && el.fill.type === 'image') {
+        const imgObj = mapShapeAsImage(el, ctx, isLayout);
+        if (imgObj) return [imgObj];
+      }
       return [mapShape(el, ctx, isLayout)];
+    }
     case 'image':
       return [mapImage(el, ctx, isLayout)];
     case 'table':
@@ -173,6 +180,48 @@ function mapElement(
     default:
       return null;
   }
+}
+
+/**
+ * Şekil + image fill → ImageObject'e çevir. Şekil tipi circle/ellipse ise
+ * borderRadius ile yuvarlat (kullanıcının profil fotoğrafları bu desendedir).
+ */
+function mapShapeAsImage(shape: PptxShape, ctx: MapContext, isLayout: boolean): ImageObject | null {
+  if (shape.fill.type !== 'image') return null;
+  const base = baseTransform(shape, ctx);
+  const blobKey = `${ctx.presentationId}_pptx_${ctx.slideIndex}_${ctx.images.length}`;
+  const dataUrl = shape.fill.value.base64 || shape.fill.value.blob || '';
+  if (!dataUrl) return null;
+  const mimeType = dataUrl.startsWith('data:') ? dataUrl.split(';')[0].slice(5) : 'image/png';
+  ctx.images.push({ blobKey, dataUrl, mimeType });
+
+  const isCircular =
+    shape.shapType === 'ellipse' ||
+    shape.shapType === 'oval' ||
+    shape.shapType === 'circle';
+
+  return {
+    id: newId('i', ctx),
+    type: 'image',
+    ...base,
+    zIndex: nextZ(ctx),
+    locked: isLayout,
+    visible: true,
+    opacity: 1,
+    blobKey,
+    thumbnailUrl: dataUrl,
+    originalWidth: base.width,
+    originalHeight: base.height,
+    brightness: 100,
+    contrast: 100,
+    blur: 0,
+    borderRadius: isCircular ? Math.min(base.width, base.height) / 2 : 0,
+    stroke: {
+      color: shape.borderColor || 'transparent',
+      width: shape.borderWidth || 0,
+      style: 'solid',
+    },
+  };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -282,7 +331,11 @@ function mapShapeType(type: string | undefined): ShapeType {
 function mapFillToStyle(fill: PptxFill): FillStyle {
   if (!fill) return { type: 'none', color: '#6366F1' };
   if (fill.type === 'color') {
-    return { type: 'solid', color: fill.value || '#6366F1' };
+    // Boş value ise transparent kabul et (pptxtojson theme color resolve edemedi)
+    if (!fill.value || fill.value === '') {
+      return { type: 'none', color: '#6366F1' };
+    }
+    return { type: 'solid', color: fill.value };
   }
   if (fill.type === 'gradient') {
     const colors = fill.value.colors ?? [];
@@ -295,6 +348,7 @@ function mapFillToStyle(fill: PptxFill): FillStyle {
       gradientType: fill.value.path === 'circle' || fill.value.path === 'shape' ? 'radial' : 'linear',
     };
   }
+  // image fill buraya gelirse bile shape dispatch'te yakalanmış olmalı
   return { type: 'none', color: '#6366F1' };
 }
 
@@ -504,7 +558,9 @@ function deriveBackground(slide: PptxSlide, sourceSize: { width: number; height:
 function mapBackground(fill: PptxFill): SlideBackground {
   if (!fill) return { type: 'solid', color: '#FFFFFF' };
   if (fill.type === 'color') {
-    return { type: 'solid', color: fill.value || '#FFFFFF' };
+    // Boş value → resolve edilemedi, beyaz fallback
+    const val = fill.value && fill.value !== '' ? fill.value : '#FFFFFF';
+    return { type: 'solid', color: val };
   }
   if (fill.type === 'gradient') {
     const colors = fill.value.colors ?? [];
@@ -543,11 +599,15 @@ function baseTransform(
   el: { left: number; top: number; width: number; height: number; rotate?: number },
   ctx: MapContext,
 ): BaseTransform {
+  // Negatif width/height (flip veya mirrored shape) → abs, çünkü DeepSlide
+  // canvas ve SVG rect negatif boyut kabul etmez
+  const w = Math.max(1, Math.abs((el.width ?? 0) * ctx.scaleX));
+  const h = Math.max(1, Math.abs((el.height ?? 0) * ctx.scaleY));
   return {
-    x: (el.left + ctx.offsetX) * ctx.scaleX,
-    y: (el.top + ctx.offsetY) * ctx.scaleY,
-    width: el.width * ctx.scaleX,
-    height: el.height * ctx.scaleY,
+    x: ((el.left ?? 0) + ctx.offsetX) * ctx.scaleX,
+    y: ((el.top ?? 0) + ctx.offsetY) * ctx.scaleY,
+    width: w,
+    height: h,
     rotation: el.rotate ?? 0,
   };
 }
