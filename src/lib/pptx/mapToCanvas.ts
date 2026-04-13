@@ -253,7 +253,7 @@ function mapShapeAsText(shape: PptxShape, ctx: MapContext, isLayout: boolean): T
     opacity: 1,
     content: style.plainText || ' ',
     fontFamily: style.fontFamily,
-    fontSize: style.fontSize,
+    fontSize: scaleFontSize(style.fontSize, ctx),
     fontWeight: style.fontWeight,
     fontStyle: style.fontStyle,
     textDecoration: 'none',
@@ -343,6 +343,13 @@ function mapShapeAsImage(shape: PptxShape, ctx: MapContext, isLayout: boolean): 
 // ═══════════════════════════════════════════════════════════════════════════
 // Text
 
+function scaleFontSize(rawPt: number, ctx: MapContext): number {
+  // Raw PPTX pt → canvas pixel. Kare slide için scaleX=scaleY, değilse ortalama.
+  const scale = (ctx.scaleX + ctx.scaleY) / 2;
+  const px = Math.round(rawPt * scale);
+  return Math.max(8, Math.min(200, px));
+}
+
 function mapText(text: PptxText, ctx: MapContext, isLayout: boolean): TextObject {
   const style = parseHtmlText(text.content);
   const base = baseTransform(text, ctx);
@@ -357,7 +364,7 @@ function mapText(text: PptxText, ctx: MapContext, isLayout: boolean): TextObject
     opacity: 1,
     content: style.plainText || ' ',
     fontFamily: style.fontFamily,
-    fontSize: style.fontSize,
+    fontSize: scaleFontSize(style.fontSize, ctx),
     fontWeight: style.fontWeight,
     fontStyle: style.fontStyle,
     textDecoration: 'none',
@@ -580,7 +587,7 @@ function mapTable(table: PptxTable, ctx: MapContext, isLayout: boolean): SlideOb
           opacity: 1,
           content: cell.text,
           fontFamily: 'Inter',
-          fontSize: Math.max(10, Math.min(rowHeight * 0.4, 16)),
+          fontSize: Math.max(8, Math.min(Math.round(rowHeight * 0.4), 14)),
           fontWeight: cell.fontBold ? 700 : 400,
           fontStyle: 'normal',
           textDecoration: 'none',

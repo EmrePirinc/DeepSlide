@@ -58,13 +58,12 @@ export function parseHtmlText(html: string | null | undefined): ParsedTextStyle 
     const styleAttr = firstStyleMatch[1];
 
     // font-size: 18pt | 24px
+    // NOT: fontSize raw değer olarak kaydedilir (pt veya px). mapToCanvas
+    // slayt ölçeğine göre çarpar — aksi halde double-scale olur.
     const fsMatch = styleAttr.match(/font-size\s*:\s*([\d.]+)\s*(pt|px)/i);
     if (fsMatch) {
       const value = parseFloat(fsMatch[1]);
-      const unit = fsMatch[2].toLowerCase();
-      style.fontSize = unit === 'pt' ? Math.round(value * 1.333) : Math.round(value);
-      if (style.fontSize < 8) style.fontSize = 8;
-      if (style.fontSize > 200) style.fontSize = 200;
+      style.fontSize = Math.max(6, Math.min(400, value));
     }
 
     // color: #RRGGBB

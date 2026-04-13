@@ -13,8 +13,10 @@ import { saveImageBlob } from '@/lib/db/images';
 import { renderCanvasSlideToBlob } from '@/lib/pptx/renderSlideToImage';
 import { resizeImage, blobToDataURL, THUMBNAIL_WIDTH } from '@/lib/utils/imageProcessing';
 
-const CANVAS_WIDTH = 1920;
-const CANVAS_HEIGHT = 1080;
+// DeepSlide SlideCanvas default boyutu 960×540. Hedef canvas'ı bu boyutlarda
+// tutmak object pozisyonlarının kırpılmamasını sağlar.
+const CANVAS_WIDTH = 960;
+const CANVAS_HEIGHT = 540;
 const MAX_FILE_MB = 100;
 
 const INITIAL: PptxImportProgress = {
