@@ -79,15 +79,21 @@ export function useAuth() {
   }, []);
 
   useEffect(() => {
-    if (!configured) return;
+    console.log('[AUTH] useAuth mount — configured:', configured);
+    if (!configured) {
+      console.warn('[AUTH] Firebase NOT configured — env vars eksik');
+      return;
+    }
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      console.log('[AUTH] onAuthStateChanged fired — user:', user?.uid ?? 'null', user?.email ?? '');
       if (!user) {
         setState({ user: null, isLoading: false, isPremium: false, profile: DEFAULT_PROFILE });
         return;
       }
 
       try {
+        console.log('[AUTH] Profil okunuyor:', user.uid);
         const profileDoc = await getDoc(doc(db, 'profiles', user.uid));
         let profileData: UserProfile = DEFAULT_PROFILE;
 
@@ -105,13 +111,15 @@ export function useAuth() {
           profileData = await resetMonthlyCounterIfNeeded(user.uid, profileData);
         }
 
+        console.log('[AUTH] Profil OK, state set ediliyor — plan:', profileData.plan);
         setState({
           user,
           isLoading: false,
           isPremium: profileData.plan === 'pro',
           profile: profileData,
         });
-      } catch {
+      } catch (err) {
+        console.error('[AUTH] Profil okuma hatası:', err);
         setState({ user, isLoading: false, isPremium: false, profile: DEFAULT_PROFILE });
       }
     });
@@ -137,22 +145,31 @@ export function useAuth() {
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
+    console.log('[AUTH] signInWithGoogle çağrıldı — redirect başlıyor');
     const provider = new GoogleAuthProvider();
-    // Popup COOP ortamında window.close yapamıyor ve hang oluyor;
-    // doğrudan redirect kullanıyoruz — Google'a gider, döner, getRedirectResult yakalar.
-    await signInWithRedirect(auth, provider);
+    try {
+      await signInWithRedirect(auth, provider);
+      console.log('[AUTH] signInWithRedirect döndü (normalde sayfa burada gitmiş olur)');
+    } catch (err) {
+      console.error('[AUTH] signInWithRedirect HATASI:', err);
+      throw err;
+    }
   }, []);
 
   // Redirect dönüşünü yakala
   useEffect(() => {
     if (!configured) return;
+    console.log('[AUTH] getRedirectResult kontrolü başladı');
     getRedirectResult(auth)
       .then((result) => {
+        console.log('[AUTH] getRedirectResult sonuç:', result?.user?.uid ?? 'null');
         if (result?.user) {
-          ensureGoogleProfile(result.user).catch(() => {/* ignore */});
+          ensureGoogleProfile(result.user)
+            .then(() => console.log('[AUTH] Profil oluşturma OK'))
+            .catch((err) => console.error('[AUTH] Profil oluşturma hatası:', err));
         }
       })
-      .catch(() => {/* ignore */});
+      .catch((err) => console.error('[AUTH] getRedirectResult hatası:', err));
   }, [configured, ensureGoogleProfile]);
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {

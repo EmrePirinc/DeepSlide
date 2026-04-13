@@ -24,7 +24,11 @@ function LoginContent() {
   const { user, signInWithGoogle, signInWithEmail } = useAuth();
 
   useEffect(() => {
-    if (user) router.push(redirect);
+    console.log('[LOGIN] user değişti:', user?.uid ?? 'null', '→ redirect target:', redirect);
+    if (user) {
+      console.log('[LOGIN] router.push çağrılıyor:', redirect);
+      router.push(redirect);
+    }
   }, [user, router, redirect]);
 
   const [email, setEmail] = useState('');
@@ -47,10 +51,13 @@ function LoginContent() {
   };
 
   const handleGoogleLogin = async () => {
+    console.log('[LOGIN] handleGoogleLogin tıklandı');
     try {
       await signInWithGoogle();
+      console.log('[LOGIN] signInWithGoogle resolved (redirect olduysa burası çalışmaz)');
       router.push(redirect);
     } catch (err) {
+      console.error('[LOGIN] handleGoogleLogin HATASI:', err);
       setError(err instanceof Error ? err.message : 'Google giriş hatası');
     }
   };
