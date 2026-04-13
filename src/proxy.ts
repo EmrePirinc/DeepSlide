@@ -16,6 +16,11 @@ export async function proxy(request: NextRequest) {
     'camera=(), geolocation=(), microphone=(self)',
   );
 
+  // Firebase Auth signInWithPopup için: COOP strict olunca window.closed/close
+  // çağrıları engelleniyor. same-origin-allow-popups OAuth popup akışına izin verir.
+  response.headers.set('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+  response.headers.set('Cross-Origin-Embedder-Policy', 'unsafe-none');
+
   // CORS: API route'ları için
   if (request.nextUrl.pathname.startsWith('/api')) {
     response.headers.set('Access-Control-Allow-Origin', request.nextUrl.origin);
