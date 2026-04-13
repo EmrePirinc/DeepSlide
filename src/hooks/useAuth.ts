@@ -7,6 +7,8 @@ import { useEffect, useState, useCallback } from 'react';
 import {
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
@@ -118,15 +120,13 @@ export function useAuth() {
     return () => unsubscribe();
   }, [configured, resetMonthlyCounterIfNeeded]);
 
-  const signInWithGoogle = useCallback(async () => {
-    const provider = new GoogleAuthProvider();
-    const result = await signInWithPopup(auth, provider);
-    const profileRef = doc(db, 'profiles', result.user.uid);
+  const ensureGoogleProfile = useCallback(async (user: User) => {
+    const profileRef = doc(db, 'profiles', user.uid);
     const profileDoc = await getDoc(profileRef);
     if (!profileDoc.exists()) {
       await setDoc(profileRef, {
-        name: result.user.displayName ?? '',
-        email: result.user.email,
+        name: user.displayName ?? '',
+        email: user.email,
         plan: 'free',
         trialRemaining: TRIAL_PRESENTATIONS,
         monthlyPresentationsUsed: 0,
@@ -136,6 +136,41 @@ export function useAuth() {
       });
     }
   }, []);
+
+  const signInWithGoogle = useCallback(async () => {
+    const provider = new GoogleAuthProvider();
+    try {
+      // Önce popup dene (hızlı UX)
+      const result = await signInWithPopup(auth, provider);
+      await ensureGoogleProfile(result.user);
+    } catch (err) {
+      const code = (err as { code?: string })?.code ?? '';
+      // Popup engellendi/COOP/iframe hatası → redirect'e fallback
+      if (
+        code === 'auth/popup-blocked' ||
+        code === 'auth/popup-closed-by-user' ||
+        code === 'auth/cancelled-popup-request' ||
+        code === 'auth/operation-not-supported-in-this-environment' ||
+        code === 'auth/web-storage-unsupported'
+      ) {
+        await signInWithRedirect(auth, provider);
+        return;
+      }
+      throw err;
+    }
+  }, [ensureGoogleProfile]);
+
+  // Redirect dönüşünü yakala
+  useEffect(() => {
+    if (!configured) return;
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          ensureGoogleProfile(result.user).catch(() => {/* ignore */});
+        }
+      })
+      .catch(() => {/* ignore */});
+  }, [configured, ensureGoogleProfile]);
 
   const signInWithEmail = useCallback(async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);
