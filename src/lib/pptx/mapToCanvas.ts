@@ -107,20 +107,58 @@ export function mapPresentationToCanvas(
     result.push(canvasSlide);
   });
 
-  // FINAL NORMALIZE PASS: tüm nesnelerin w/h pozitif, x/y sonlu olsun
+  // NORMALIZE + DEDUP: w/h pozitif, x/y sonlu, aynı içerik+yakın pozisyon tekilleştir
   for (const slide of result) {
+    // 1. Normalize
     for (const obj of slide.objects) {
       if (!Number.isFinite(obj.x)) obj.x = 0;
       if (!Number.isFinite(obj.y)) obj.y = 0;
       obj.width = Math.max(1, Math.abs(obj.width));
       obj.height = Math.max(1, Math.abs(obj.height));
-      // Line nesnesi için start/end koordinatları da clamp
       if (obj.type === 'line') {
         const line = obj as LineObject;
         if (!Number.isFinite(line.startX)) line.startX = 0;
         if (!Number.isFinite(line.startY)) line.startY = 0;
         if (!Number.isFinite(line.endX)) line.endX = line.width;
         if (!Number.isFinite(line.endY)) line.endY = 0;
+      }
+    }
+
+    // 2. Dedup: aynı metin içeriği + 30px içinde konum → sadece ilki kalır
+    const seenTexts = new Map<string, { x: number; y: number }>();
+    slide.objects = slide.objects.filter((obj) => {
+      if (obj.type !== 'text') return true;
+      const t = obj as TextObject;
+      const normalized = (t.content || '').trim();
+      if (!normalized) return true;
+      const existing = seenTexts.get(normalized);
+      if (existing && Math.abs(existing.x - t.x) < 30 && Math.abs(existing.y - t.y) < 30) {
+        return false;
+      }
+      seenTexts.set(normalized, { x: t.x, y: t.y });
+      return true;
+    });
+
+    // 3. Shape'lerde de textContent dedup — shape.textContent bir text ile overlap ediyorsa
+    //    shape'in textContent'ini sil (metin sadece bir kez görünsün)
+    for (const obj of slide.objects) {
+      if (obj.type !== 'shape') continue;
+      const sh = obj as ShapeObject;
+      if (!sh.textContent) continue;
+      const trimmed = sh.textContent.trim();
+      const textNearby = slide.objects.find((o) => {
+        if (o.type !== 'text') return false;
+        const t = o as TextObject;
+        return (
+          t.content.trim() === trimmed &&
+          Math.abs(t.x - sh.x) < 80 &&
+          Math.abs(t.y - sh.y) < 80
+        );
+      });
+      if (textNearby) {
+        sh.textContent = undefined;
+        sh.textColor = undefined;
+        sh.textFontSize = undefined;
       }
     }
   }
