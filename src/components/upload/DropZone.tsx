@@ -9,17 +9,37 @@ import { Card } from '@/components/ui/card';
 
 interface DropZoneProps {
   onFilesSelected: (files: File[]) => void;
+  /** PPTX dosyası seçilirse bu callback tetiklenir. Yoksa PPTX dosyaları atlanır. */
+  onPptxSelected?: (file: File) => void;
   disabled?: boolean;
 }
 
-export function DropZone({ onFilesSelected, disabled }: DropZoneProps) {
+export function DropZone({ onFilesSelected, onPptxSelected, disabled }: DropZoneProps) {
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
-      if (acceptedFiles.length > 0) {
-        onFilesSelected(acceptedFiles);
+      const pptxFiles: File[] = [];
+      const imageFiles: File[] = [];
+      for (const f of acceptedFiles) {
+        const name = f.name.toLowerCase();
+        if (
+          name.endsWith('.pptx') ||
+          f.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        ) {
+          pptxFiles.push(f);
+        } else {
+          imageFiles.push(f);
+        }
+      }
+
+      if (imageFiles.length > 0) {
+        onFilesSelected(imageFiles);
+      }
+      // PPTX için sadece ilk dosyayı işle — çoklu pptx nadir ve senkron akışı karıştırır
+      if (pptxFiles.length > 0 && onPptxSelected) {
+        onPptxSelected(pptxFiles[0]);
       }
     },
-    [onFilesSelected]
+    [onFilesSelected, onPptxSelected]
   );
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -29,6 +49,11 @@ export function DropZone({ onFilesSelected, disabled }: DropZoneProps) {
       'image/png': ['.png'],
       'image/gif': ['.gif'],
       'image/webp': ['.webp'],
+      ...(onPptxSelected
+        ? {
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
+          }
+        : {}),
     },
     maxFiles: 500,
     disabled,
@@ -55,7 +80,7 @@ export function DropZone({ onFilesSelected, disabled }: DropZoneProps) {
             : 'Görselleri sürükle-bırak ile yükleyin'}
         </p>
         <p className="text-sm text-muted-foreground">
-          JPG, PNG, GIF, WebP — Maks 20MB/dosya — 500 dosyaya kadar
+          JPG, PNG, GIF, WebP{onPptxSelected ? ', PPTX' : ''} — Maks 20MB/dosya — 500 dosyaya kadar
         </p>
         <p className="text-xs text-muted-foreground mt-1">
           veya tıklayarak dosya seçin
