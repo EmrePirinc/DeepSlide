@@ -335,7 +335,7 @@ export default function PresentationModePage({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === 'f' || e.key === 'F') {
+      if (e.key === 'F11') {
         e.preventDefault();
         toggleFullscreen();
       }
@@ -702,7 +702,7 @@ export default function PresentationModePage({
                 ? 'bg-blue-500 text-white'
                 : 'bg-white/10 text-white/70 hover:text-white hover:bg-white/20'
             }`}
-            title={isFullscreen ? 'Tam ekrandan çık (F)' : 'Tam ekran (F)'}
+            title={isFullscreen ? 'Tam ekrandan çık (F11)' : 'Tam ekran (F11)'}
           >
             {isFullscreen ? '⛶' : '⛶'}
           </button>
