@@ -13,8 +13,6 @@ import { ImagePreview } from '@/components/upload/ImagePreview';
 import { AIWizardPanel } from '@/components/wizard/AIWizardPanel';
 import { usePresentationStore } from '@/stores/presentationStore';
 import { useImageUpload } from '@/hooks/useImageUpload';
-import { usePptxImport } from '@/hooks/usePptxImport';
-import { PptxImportProgress } from '@/components/upload/PptxImportProgress';
 import { PRESENTATION_TEMPLATES } from '@/lib/templates/presets';
 import type { WizardSlide } from '@/app/api/wizard/generate/route';
 import { saveNote } from '@/lib/db/notes';
@@ -30,11 +28,6 @@ export default function NewPresentationPage() {
     updateSettings,
   } = usePresentationStore();
   const { uploadFiles, progress, isUploading } = useImageUpload();
-  const {
-    importPptx,
-    progress: pptxProgress,
-    isImporting: isImportingPptx,
-  } = usePptxImport();
   const [title, setTitle] = useState('');
   const [mode, setMode] = useState<CreationMode>('blank');
   const [step, setStep] = useState<'title' | 'upload' | 'done'>('title');
@@ -77,10 +70,6 @@ export default function NewPresentationPage() {
 
   const handleFilesSelected = async (files: File[]) => {
     await uploadFiles(files);
-  };
-
-  const handlePptxSelected = async (file: File) => {
-    await importPptx(file);
   };
 
   const handleContinue = () => {
@@ -203,13 +192,7 @@ export default function NewPresentationPage() {
           {/* Upload Step */}
           {step === 'upload' && (
             <div className="space-y-6">
-              <DropZone
-                onFilesSelected={handleFilesSelected}
-                onPptxSelected={handlePptxSelected}
-                disabled={isUploading || isImportingPptx}
-              />
-
-              <PptxImportProgress progress={pptxProgress} />
+              <DropZone onFilesSelected={handleFilesSelected} disabled={isUploading} />
 
               <UploadProgress
                 total={progress.total}

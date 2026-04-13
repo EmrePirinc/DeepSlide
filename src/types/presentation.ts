@@ -37,8 +37,6 @@ export interface PresentationImage {
   analysisError?: string;
   createdAt: number;
   textOverlays?: TextOverlay[];
-  /** Görsel kaynağı — 'upload' varsayılan, 'pptx' içe aktarılmış slayt */
-  source?: 'upload' | 'pptx';
 }
 
 export type AnalysisStatus = 'pending' | 'analyzing' | 'completed' | 'failed';

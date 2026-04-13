@@ -88,15 +88,6 @@ export function isValidFileSize(file: File, maxSizeMB: number = 20): boolean {
   return file.size <= maxSizeMB * 1024 * 1024;
 }
 
-/**
- * PPTX dosyası mı? — uzantı veya mimetype kontrolü.
- */
-export function isValidPptxType(file: File): boolean {
-  const name = file.name.toLowerCase();
-  if (name.endsWith('.pptx')) return true;
-  return file.type === 'application/vnd.openxmlformats-officedocument.presentationml.presentation';
-}
-
 export const THUMBNAIL_WIDTH = 200;
 export const ANALYSIS_WIDTH = 1024;
 export const MAX_FILE_SIZE_MB = 20;
