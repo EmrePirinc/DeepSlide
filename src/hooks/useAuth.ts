@@ -196,6 +196,15 @@ export function useAuth() {
           ensureGoogleProfile(result.user)
             .then(() => console.log('[AUTH] Profil oluşturma OK'))
             .catch((err) => console.error('[AUTH] Profil oluşturma hatası:', err));
+        } else {
+          // Stale pendingRedirect key'i temizle — eski başarısız redirect denemeleri popup'ı bozmasın
+          if (typeof window !== 'undefined') {
+            const stale = Object.keys(sessionStorage).filter((k) => k.startsWith('firebase:pendingRedirect'));
+            if (stale.length > 0) {
+              console.warn('[AUTH] Stale pendingRedirect key temizleniyor:', stale.join(','));
+              stale.forEach((k) => sessionStorage.removeItem(k));
+            }
+          }
         }
       })
       .catch((err) => console.error('[AUTH] getRedirectResult hatası:', err));
