@@ -92,8 +92,13 @@ export function useAuth() {
         return;
       }
 
+      // 1) User'ı HEMEN set et — login sayfasının redirect'i bloklanmasın
+      console.log('[AUTH] User state hemen set ediliyor (profil sonra yüklenecek)');
+      setState({ user, isLoading: false, isPremium: false, profile: DEFAULT_PROFILE });
+
+      // 2) Profil arka planda yüklensin — başarısız olsa da auth çalışır
       try {
-        console.log('[AUTH] Profil okunuyor:', user.uid);
+        console.log('[AUTH] Profil okunuyor (background):', user.uid);
         const profileDoc = await getDoc(doc(db, 'profiles', user.uid));
         let profileData: UserProfile = DEFAULT_PROFILE;
 
@@ -109,18 +114,18 @@ export function useAuth() {
             currentPeriodEnd: data.currentPeriodEnd,
           };
           profileData = await resetMonthlyCounterIfNeeded(user.uid, profileData);
+        } else {
+          console.warn('[AUTH] Profil dokümanı yok — DEFAULT kullanılıyor');
         }
 
-        console.log('[AUTH] Profil OK, state set ediliyor — plan:', profileData.plan);
-        setState({
-          user,
-          isLoading: false,
+        console.log('[AUTH] Profil OK, state güncelleniyor — plan:', profileData.plan);
+        setState((prev) => ({
+          ...prev,
           isPremium: profileData.plan === 'pro',
           profile: profileData,
-        });
+        }));
       } catch (err) {
-        console.error('[AUTH] Profil okuma hatası:', err);
-        setState({ user, isLoading: false, isPremium: false, profile: DEFAULT_PROFILE });
+        console.error('[AUTH] Profil okuma hatası (auth yine de çalışır):', err);
       }
     });
 
