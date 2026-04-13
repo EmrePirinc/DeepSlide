@@ -106,22 +106,54 @@ export function mapPresentationToCanvas(
     result.push(canvasSlide);
   });
 
+  // FINAL NORMALIZE PASS: tüm nesnelerin w/h pozitif, x/y sonlu olsun
+  for (const slide of result) {
+    for (const obj of slide.objects) {
+      if (!Number.isFinite(obj.x)) obj.x = 0;
+      if (!Number.isFinite(obj.y)) obj.y = 0;
+      obj.width = Math.max(1, Math.abs(obj.width));
+      obj.height = Math.max(1, Math.abs(obj.height));
+    }
+  }
+
   if (typeof console !== 'undefined') {
-    // eslint-disable-next-line no-console
-    console.log('[PPTX] Mapping özeti', {
+    // Summary + ilk 2 slaytın mapped objects'leri
+    const summary = {
       slideCount: result.length,
       totalObjects: result.reduce((n, s) => n + s.objects.length, 0),
       imageCount: allImages.length,
       skippedCount: allSkipped.length,
-      firstSlideBg: result[0]?.background,
-      firstSlideObjectTypes: result[0]?.objects.slice(0, 10).map((o) => ({
-        type: o.type,
-        x: Math.round(o.x),
-        y: Math.round(o.y),
-        w: Math.round(o.width),
-        h: Math.round(o.height),
-      })),
-    });
+    };
+    // eslint-disable-next-line no-console
+    console.log('[PPTX MAP] ' + JSON.stringify(summary));
+    for (let i = 0; i < Math.min(2, result.length); i++) {
+      const slide = result[i];
+      const obj = slide.objects.slice(0, 8).map((o) => {
+        const r: Record<string, unknown> = {
+          type: o.type,
+          x: Math.round(o.x),
+          y: Math.round(o.y),
+          w: Math.round(o.width),
+          h: Math.round(o.height),
+          z: o.zIndex,
+        };
+        if (o.type === 'text') {
+          const t = o as { content: string; color: string; fontSize: number };
+          r.text = (t.content || '').slice(0, 60);
+          r.color = t.color;
+          r.size = t.fontSize;
+        }
+        if (o.type === 'shape') {
+          const sh = o as { shapeType: string; fill: { type: string; color: string }; textContent?: string };
+          r.shape = sh.shapeType;
+          r.fill = `${sh.fill.type}:${sh.fill.color}`;
+          if (sh.textContent) r.txt = sh.textContent.slice(0, 40);
+        }
+        return r;
+      });
+      // eslint-disable-next-line no-console
+      console.log(`[PPTX MAP] slide[${i}] bg=${JSON.stringify(slide.background)} objects=\n` + obj.map((x) => JSON.stringify(x)).join('\n'));
+    }
   }
 
   return { slides: result, images: allImages, skipped: allSkipped };

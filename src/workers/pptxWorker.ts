@@ -26,53 +26,42 @@ self.addEventListener('message', async (event: MessageEvent<WorkerRequest>) => {
     });
     const totalSlides = parsed.slides.length;
 
-    // Debug — ilk 3 slaytın ham verisi (base64 kısaltılmış)
-    const sanitize = (obj: unknown): unknown => {
-      if (typeof obj !== 'object' || obj === null) return obj;
-      if (Array.isArray(obj)) return obj.map(sanitize);
-      const out: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
-        if ((k === 'base64' || k === 'blob') && typeof v === 'string' && v.length > 100) {
-          out[k] = v.slice(0, 60) + `… (${v.length})`;
-        } else {
-          out[k] = sanitize(v);
-        }
-      }
-      return out;
-    };
-    // eslint-disable-next-line no-console
-    console.log('[PPTX WORKER] parsed.size:', parsed.size);
-    // eslint-disable-next-line no-console
-    console.log('[PPTX WORKER] total slides:', totalSlides);
+    // Debug — JSON.stringify ile log (Worker console relay [object Object] gösteriyor)
+    const debugLines: string[] = [];
+    debugLines.push(`size=${JSON.stringify(parsed.size)} totalSlides=${totalSlides}`);
     for (let i = 0; i < Math.min(3, totalSlides); i++) {
       const s = parsed.slides[i];
-      // eslint-disable-next-line no-console
-      console.log(`[PPTX WORKER] slide[${i}] fill:`, s.fill, 'elementCount:', (s.elements ?? []).length, 'types:', countTypes(s.elements ?? []));
-      // eslint-disable-next-line no-console
-      console.log(`[PPTX WORKER] slide[${i}] tüm element'lerin özeti:`, (s.elements ?? []).map((el) => {
+      debugLines.push(`--- slide[${i}] fill=${JSON.stringify(s.fill)} elCount=${(s.elements ?? []).length} types=${JSON.stringify(countTypes(s.elements ?? []))}`);
+      for (const el of s.elements ?? []) {
         const base: Record<string, unknown> = {
           type: el.type,
-          left: Math.round(('left' in el ? el.left : 0) as number),
-          top: Math.round(('top' in el ? el.top : 0) as number),
+          l: Math.round(('left' in el ? el.left : 0) as number),
+          t: Math.round(('top' in el ? el.top : 0) as number),
           w: Math.round(('width' in el ? el.width : 0) as number),
           h: Math.round(('height' in el ? el.height : 0) as number),
         };
         if (el.type === 'shape') {
-          base.shapType = (el as { shapType?: string }).shapType;
-          base.fillType = (el as { fill?: { type?: string } }).fill?.type;
-          base.hasContent = !!(el as { content?: string }).content;
+          const sh = el as { shapType?: string; fill?: { type?: string; value?: unknown }; content?: string };
+          base.shapType = sh.shapType;
+          base.fillType = sh.fill?.type;
+          const fv = sh.fill?.value;
+          base.fillVal = typeof fv === 'string' ? fv : typeof fv === 'object' && fv !== null ? Object.keys(fv).join(',') : '';
+          base.content = (sh.content || '').slice(0, 80);
         }
         if (el.type === 'text') {
-          base.content = ((el as { content?: string }).content || '').slice(0, 60);
+          const te = el as { content?: string; vAlign?: string };
+          base.content = (te.content || '').slice(0, 120);
+          base.vAlign = te.vAlign;
         }
         if (el.type === 'image') {
-          base.hasBase64 = !!(el as { base64?: string }).base64;
+          const im = el as { base64?: string };
+          base.hasBase64 = !!im.base64;
         }
-        return base;
-      }));
+        debugLines.push(JSON.stringify(base));
+      }
     }
     // eslint-disable-next-line no-console
-    console.log('[PPTX WORKER] slide[1] ilk element tam sanitize:', sanitize(parsed.slides[1]?.elements?.[0]));
+    console.log('[PPTX WORKER DEBUG]\n' + debugLines.join('\n'));
 
     post({
       kind: 'progress',
