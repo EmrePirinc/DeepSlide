@@ -26,6 +26,7 @@ import type {
   TextObject,
   ShapeObject,
   ImageObject,
+  LineObject,
   ShapeType,
   SlideBackground,
   FillStyle,
@@ -113,6 +114,14 @@ export function mapPresentationToCanvas(
       if (!Number.isFinite(obj.y)) obj.y = 0;
       obj.width = Math.max(1, Math.abs(obj.width));
       obj.height = Math.max(1, Math.abs(obj.height));
+      // Line nesnesi için start/end koordinatları da clamp
+      if (obj.type === 'line') {
+        const line = obj as LineObject;
+        if (!Number.isFinite(line.startX)) line.startX = 0;
+        if (!Number.isFinite(line.startY)) line.startY = 0;
+        if (!Number.isFinite(line.endX)) line.endX = line.width;
+        if (!Number.isFinite(line.endY)) line.endY = 0;
+      }
     }
   }
 
@@ -186,11 +195,24 @@ function mapElement(
     case 'text':
       return [mapText(el, ctx, isLayout)];
     case 'shape': {
-      // Shape'in fill'i image ise aslında bir resim (PPTX'te en yaygın desen:
-      // oval/dikdörtgen şekil + picture fill). ImageObject'e çevir.
+      // 1) Shape + image fill → ImageObject (profil fotoğrafları)
       if (el.fill && el.fill.type === 'image') {
         const imgObj = mapShapeAsImage(el, ctx, isLayout);
         if (imgObj) return [imgObj];
+      }
+      // 2) shapType 'line' (çizgi) + height 0 → LineObject
+      if (el.shapType === 'line' || (el.height ?? 0) === 0) {
+        return [mapShapeAsLine(el, ctx, isLayout)];
+      }
+      // 3) Shape'in content'i varsa ve fill boş/yok → bu aslında metin kutusu.
+      //    PPTX'te metin kutusu teknik olarak "shape with content" olarak encode edilir.
+      const hasText = !!el.content && el.content.trim().length > 0;
+      const hasVisibleFill =
+        el.fill &&
+        ((el.fill.type === 'color' && el.fill.value && el.fill.value !== '') ||
+          el.fill.type === 'gradient');
+      if (hasText && !hasVisibleFill) {
+        return [mapShapeAsText(el, ctx, isLayout)];
       }
       return [mapShape(el, ctx, isLayout)];
     }
@@ -212,6 +234,68 @@ function mapElement(
     default:
       return null;
   }
+}
+
+/**
+ * Shape + HTML content + fill yok → TextObject'e çevir.
+ * PPTX metin kutuları teknik olarak "shape" tipinde saklanır.
+ */
+function mapShapeAsText(shape: PptxShape, ctx: MapContext, isLayout: boolean): TextObject {
+  const style = parseHtmlText(shape.content);
+  const base = baseTransform(shape, ctx);
+  return {
+    id: newId('t', ctx),
+    type: 'text',
+    ...base,
+    zIndex: nextZ(ctx),
+    locked: isLayout,
+    visible: true,
+    opacity: 1,
+    content: style.plainText || ' ',
+    fontFamily: style.fontFamily,
+    fontSize: style.fontSize,
+    fontWeight: style.fontWeight,
+    fontStyle: style.fontStyle,
+    textDecoration: 'none',
+    color: style.color,
+    highlightColor: 'transparent',
+    textAlign: style.textAlign,
+    lineHeight: 1.3,
+    listType: style.listType,
+    verticalAlign: mapVAlign(shape.vAlign),
+  };
+}
+
+/**
+ * Shape (line veya height=0) → LineObject'e çevir.
+ */
+function mapShapeAsLine(shape: PptxShape, ctx: MapContext, isLayout: boolean): LineObject {
+  const base = baseTransform(shape, ctx);
+  return {
+    id: newId('l', ctx),
+    type: 'line',
+    x: base.x,
+    y: base.y,
+    width: Math.max(1, base.width),
+    height: Math.max(1, base.height),
+    rotation: base.rotation,
+    zIndex: nextZ(ctx),
+    locked: isLayout,
+    visible: true,
+    opacity: 1,
+    lineType: 'straight',
+    startX: 0,
+    startY: 0,
+    endX: Math.max(1, base.width),
+    endY: 0,
+    stroke: {
+      color: shape.borderColor || '#9CA3AF',
+      width: Math.max(1, shape.borderWidth || 2),
+      style: shape.borderType === 'dashed' || shape.borderType === 'dotted' ? shape.borderType : 'solid',
+    },
+    startArrow: 'none',
+    endArrow: 'none',
+  };
 }
 
 /**
