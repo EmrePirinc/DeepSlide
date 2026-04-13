@@ -78,6 +78,7 @@ export default function PresentationModePage({
   const [subtitleEnabled, setSubtitleEnabled] = useState(false);
   const [subtitleLang, setSubtitleLang] = useState<SubtitleLanguage>('tr');
   const [showQR, setShowQR] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState(false);
   const [passwordUnlocked, setPasswordUnlocked] = useState(false);
@@ -310,6 +311,38 @@ export default function PresentationModePage({
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [mode, currentPresentation, goNext, goPrev, setFocusedImage, handleExit]);
+
+  // Tam ekran (Fullscreen API) — F11 alternatifi, browser chrome'unu da gizler
+  const toggleFullscreen = useCallback(async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch {
+      /* kullanıcı reddetti veya desteklenmiyor */
+    }
+  }, []);
+
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+
+  // F klavye kısayolu
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        toggleFullscreen();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggleFullscreen]);
 
   // Canlı yayın status dinle
   useEffect(() => {
@@ -659,6 +692,19 @@ export default function PresentationModePage({
             title="QR Kod ile Paylaş"
           >
             QR
+          </button>
+
+          {/* Tam ekran toggle (F kısayolu) */}
+          <button
+            onClick={toggleFullscreen}
+            className={`rounded-xl px-3 py-2 text-xs font-medium transition ${
+              isFullscreen
+                ? 'bg-blue-500 text-white'
+                : 'bg-white/10 text-white/70 hover:text-white hover:bg-white/20'
+            }`}
+            title={isFullscreen ? 'Tam ekrandan çık (F)' : 'Tam ekran (F)'}
+          >
+            {isFullscreen ? '⛶' : '⛶'}
           </button>
 
           {/* Presenter View */}
