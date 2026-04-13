@@ -30,7 +30,9 @@ const DEFAULT_STYLE: ParsedTextStyle = {
   fontSize: 18,
   fontWeight: 400,
   fontStyle: 'normal',
-  color: '#F8FAFC',
+  // PPTX slaytları genelde koyu metin / açık arka plan içerdiği için siyah
+  // fallback. Beyaz arka planda beyaz metin görünmeme bug'ını önler.
+  color: '#1F2937',
   textAlign: 'left',
   listType: 'none',
 };

@@ -214,14 +214,20 @@ function drawText(
 
 async function drawImageObject(ctx: Ctx2D, obj: ImageObject, opts: RenderOptions): Promise<void> {
   const src = opts.imageMap.get(obj.blobKey) ?? obj.thumbnailUrl;
-  if (!src) return;
+  if (!src) {
+    // eslint-disable-next-line no-console
+    console.warn('[PPTX render] image src boş:', obj.blobKey);
+    return;
+  }
   try {
     const res = await fetch(src);
     const blob = await res.blob();
     const bitmap = await createImageBitmap(blob);
     ctx.drawImage(bitmap, obj.x, obj.y, obj.width, obj.height);
     bitmap.close();
-  } catch {
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn('[PPTX render] image decode hatası:', obj.blobKey, err);
     ctx.fillStyle = '#E5E7EB';
     ctx.fillRect(obj.x, obj.y, obj.width, obj.height);
   }

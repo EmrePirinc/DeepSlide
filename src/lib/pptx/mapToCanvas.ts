@@ -84,20 +84,17 @@ export function mapPresentationToCanvas(
 
     const objects: SlideObject[] = [];
 
-    // 1) Master/Layout elemanları arka planda, kilitli
-    const layoutCtx = { ...ctx, zCounter: { value: -1000 } };
-    for (const el of slide.layoutElements ?? []) {
-      const mapped = mapElement(el, layoutCtx, true);
-      if (mapped) objects.push(...mapped);
-    }
-
-    // 2) Slide elemanları
+    // Slide elemanları (layoutElements kasıtlı olarak atlandı —
+    // master placeholder kutuları gürültü yaratıyor ve asıl içeriği perdeliyor)
     for (const el of slide.elements ?? []) {
       const mapped = mapElement(el, ctx, false);
       if (mapped) objects.push(...mapped);
     }
 
-    const background = mapBackground(slide.fill);
+    // Background: önce slide.fill, yoksa layoutElements içindeki tam-slayt
+    // boyutlu Shape'in fill'inden türet, yoksa neutral beyaz
+    const background = deriveBackground(slide, sourceSize);
+
     const canvasSlide: CanvasSlide = {
       id: makeId(presentationId, slideIndex),
       presentationId,
@@ -108,6 +105,24 @@ export function mapPresentationToCanvas(
     };
     result.push(canvasSlide);
   });
+
+  if (typeof console !== 'undefined') {
+    // eslint-disable-next-line no-console
+    console.log('[PPTX] Mapping özeti', {
+      slideCount: result.length,
+      totalObjects: result.reduce((n, s) => n + s.objects.length, 0),
+      imageCount: allImages.length,
+      skippedCount: allSkipped.length,
+      firstSlideBg: result[0]?.background,
+      firstSlideObjectTypes: result[0]?.objects.slice(0, 10).map((o) => ({
+        type: o.type,
+        x: Math.round(o.x),
+        y: Math.round(o.y),
+        w: Math.round(o.width),
+        h: Math.round(o.height),
+      })),
+    });
+  }
 
   return { slides: result, images: allImages, skipped: allSkipped };
 }
@@ -450,6 +465,41 @@ function makePlaceholder(
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Background
+
+/**
+ * Slayt arka planını türet:
+ * 1) slide.fill set edilmişse direkt
+ * 2) layoutElements içinde slide boyutunda full-cover Shape varsa onun fill'i
+ * 3) elements içinde (0,0) başlayan tam kaplayıcı Shape varsa onun fill'i
+ * 4) Neutral beyaz
+ */
+function deriveBackground(slide: PptxSlide, sourceSize: { width: number; height: number }): SlideBackground {
+  if (slide.fill) {
+    const bg = mapBackground(slide.fill);
+    if (bg.type !== 'solid' || bg.color !== '#FFFFFF') return bg;
+  }
+
+  const coversSlide = (el: PptxElement): boolean => {
+    if (el.type !== 'shape') return false;
+    const tol = Math.max(sourceSize.width, sourceSize.height) * 0.05;
+    return (
+      Math.abs(el.left) < tol &&
+      Math.abs(el.top) < tol &&
+      el.width >= sourceSize.width * 0.9 &&
+      el.height >= sourceSize.height * 0.9
+    );
+  };
+
+  const candidates = [...(slide.elements ?? []), ...(slide.layoutElements ?? [])];
+  for (const el of candidates) {
+    if (coversSlide(el) && el.type === 'shape' && el.fill) {
+      const bg = mapBackground(el.fill);
+      if (bg.type !== 'solid' || bg.color !== '#FFFFFF') return bg;
+    }
+  }
+
+  return { type: 'solid', color: '#FFFFFF' };
+}
 
 function mapBackground(fill: PptxFill): SlideBackground {
   if (!fill) return { type: 'solid', color: '#FFFFFF' };
