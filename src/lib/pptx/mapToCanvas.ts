@@ -213,6 +213,7 @@ function mapElement(
   el: PptxElement,
   ctx: MapContext,
   isLayout: boolean,
+  insideGroup: boolean = false,
 ): SlideObject[] | null {
   // Group → recursive açma
   if (el.type === 'group') {
@@ -223,7 +224,7 @@ function mapElement(
     };
     const out: SlideObject[] = [];
     for (const child of el.elements ?? []) {
-      const mapped = mapElement(child, groupCtx, isLayout);
+      const mapped = mapElement(child, groupCtx, isLayout, true);
       if (mapped) out.push(...mapped);
     }
     return out;
@@ -244,15 +245,27 @@ function mapElement(
       }
       // 3) Shape'in content'i varsa ve fill boş/yok → bu aslında metin kutusu.
       //    PPTX'te metin kutusu teknik olarak "shape with content" olarak encode edilir.
+      //    AMA grup içindeyse atla — slide level'daki text'ler duplicate yaratıyor.
       const hasText = !!el.content && el.content.trim().length > 0;
       const hasVisibleFill =
         el.fill &&
         ((el.fill.type === 'color' && el.fill.value && el.fill.value !== '') ||
           el.fill.type === 'gradient');
       if (hasText && !hasVisibleFill) {
+        if (insideGroup) {
+          // Grup içi text'leri atla (aynı içerik slide level'da genelde tekrar eder)
+          return null;
+        }
         return [mapShapeAsText(el, ctx, isLayout)];
       }
-      return [mapShape(el, ctx, isLayout)];
+      // Grup içindeki fill'li shape'lerin textContent'ini de temizle
+      const mapped = mapShape(el, ctx, isLayout);
+      if (insideGroup) {
+        mapped.textContent = undefined;
+        mapped.textColor = undefined;
+        mapped.textFontSize = undefined;
+      }
+      return [mapped];
     }
     case 'image':
       return [mapImage(el, ctx, isLayout)];
