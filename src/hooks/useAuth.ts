@@ -6,6 +6,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   onAuthStateChanged,
+  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   signInWithEmailAndPassword,
@@ -159,16 +160,30 @@ export function useAuth() {
   }, []);
 
   const signInWithGoogle = useCallback(async () => {
-    console.log('[AUTH] signInWithGoogle çağrıldı — redirect başlıyor');
+    console.log('[AUTH] signInWithGoogle çağrıldı — popup açılıyor');
     const provider = new GoogleAuthProvider();
     try {
-      await signInWithRedirect(auth, provider);
-      console.log('[AUTH] signInWithRedirect döndü (normalde sayfa burada gitmiş olur)');
+      const result = await signInWithPopup(auth, provider);
+      console.log('[AUTH] signInWithPopup OK — uid:', result.user.uid);
+      await ensureGoogleProfile(result.user);
+      console.log('[AUTH] ensureGoogleProfile OK');
     } catch (err) {
-      console.error('[AUTH] signInWithRedirect HATASI:', err);
+      const code = (err as { code?: string })?.code ?? '';
+      console.error('[AUTH] signInWithPopup HATASI:', code, err);
+      // Popup engellenirse veya COOP altında çalışmazsa redirect'e fallback
+      if (
+        code === 'auth/popup-blocked' ||
+        code === 'auth/popup-closed-by-user' ||
+        code === 'auth/cancelled-popup-request' ||
+        code === 'auth/operation-not-supported-in-this-environment'
+      ) {
+        console.warn('[AUTH] Popup başarısız → redirect fallback');
+        await signInWithRedirect(auth, provider);
+        return;
+      }
       throw err;
     }
-  }, []);
+  }, [ensureGoogleProfile]);
 
   // Redirect dönüşünü yakala
   useEffect(() => {
