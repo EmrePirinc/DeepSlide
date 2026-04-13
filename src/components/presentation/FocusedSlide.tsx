@@ -57,26 +57,35 @@ export function FocusedSlide({
         <div className="absolute inset-0" style={{ backgroundColor: `${theme.bg}80` }} />
       </div>
 
+      {/* FR-001: Tam ekran slayt görseli — DOM ağacında en üstte, tüm viewport'u doldurur.
+          Inline style ile herhangi bir parent / FM transform constraint'inden bağımsız. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={imageSrc}
+        alt={image.fileName}
+        style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          width: '100vw',
+          height: '100vh',
+          objectFit: 'cover',
+          zIndex: 1,
+        }}
+      />
+
       <AnimatePresence mode="wait">
         <motion.div
           key={image.id}
-          layoutId={`slide-${image.id}`}
-          className="relative w-screen h-screen flex items-center justify-center"
+          className="fixed inset-0"
+          style={{ zIndex: 2, pointerEvents: 'none' }}
           variants={transition.enter}
           initial="initial"
           animate="animate"
           exit="exit"
           transition={{ type: 'spring', stiffness: 200, damping: 30 }}
         >
-          {/* FR-001: Tam ekran slayt — 100vw × 100vh object-contain.
-              Eski max-h-[85vh] kırpması kaldırıldı. */}
-          <div className="relative w-full h-full flex items-center justify-center">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={imageSrc}
-              alt={image.fileName}
-              className="max-w-full max-h-full object-contain"
-            />
+          <div className="absolute inset-0">
             {/* Text Overlays — Faz 3 */}
             {(image.textOverlays ?? []).map((overlay) => (
               <span
