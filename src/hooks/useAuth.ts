@@ -80,6 +80,15 @@ export function useAuth() {
 
   useEffect(() => {
     console.log('[AUTH] useAuth mount — configured:', configured);
+    console.log('[AUTH] auth.currentUser at mount:', auth?.currentUser?.uid ?? 'null');
+    console.log('[AUTH] auth.app.options:', JSON.stringify({
+      authDomain: auth?.app?.options?.authDomain,
+      projectId: auth?.app?.options?.projectId,
+    }));
+    if (typeof window !== 'undefined') {
+      const pendingKeys = Object.keys(sessionStorage).filter((k) => k.includes('firebase'));
+      console.log('[AUTH] sessionStorage firebase keys:', pendingKeys.join(', ') || 'yok');
+    }
     if (!configured) {
       console.warn('[AUTH] Firebase NOT configured — env vars eksik');
       return;

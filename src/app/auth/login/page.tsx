@@ -8,6 +8,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { MaterialIcon } from '@/components/ui/MaterialIcon';
 import { useAuth } from '@/hooks/useAuth';
+import { AuthDebugPanel } from '@/components/debug/AuthDebugPanel';
 
 export default function LoginPage() {
   return (
@@ -64,6 +65,7 @@ function LoginContent() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
+      <AuthDebugPanel />
       <div className="w-full max-w-md glass-card rounded-2xl border border-white/5 p-8 space-y-6">
         {/* Logo & Title */}
         <div className="text-center">
