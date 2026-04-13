@@ -6,7 +6,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import {
   onAuthStateChanged,
-  signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
   signInWithEmailAndPassword,
@@ -139,26 +138,10 @@ export function useAuth() {
 
   const signInWithGoogle = useCallback(async () => {
     const provider = new GoogleAuthProvider();
-    try {
-      // Önce popup dene (hızlı UX)
-      const result = await signInWithPopup(auth, provider);
-      await ensureGoogleProfile(result.user);
-    } catch (err) {
-      const code = (err as { code?: string })?.code ?? '';
-      // Popup engellendi/COOP/iframe hatası → redirect'e fallback
-      if (
-        code === 'auth/popup-blocked' ||
-        code === 'auth/popup-closed-by-user' ||
-        code === 'auth/cancelled-popup-request' ||
-        code === 'auth/operation-not-supported-in-this-environment' ||
-        code === 'auth/web-storage-unsupported'
-      ) {
-        await signInWithRedirect(auth, provider);
-        return;
-      }
-      throw err;
-    }
-  }, [ensureGoogleProfile]);
+    // Popup COOP ortamında window.close yapamıyor ve hang oluyor;
+    // doğrudan redirect kullanıyoruz — Google'a gider, döner, getRedirectResult yakalar.
+    await signInWithRedirect(auth, provider);
+  }, []);
 
   // Redirect dönüşünü yakala
   useEffect(() => {
