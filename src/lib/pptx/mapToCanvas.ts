@@ -578,6 +578,18 @@ function mapImage(img: PptxImage, ctx: MapContext, isLayout: boolean): ImageObje
     mimeType,
   });
 
+  // Daire/oval tespit:
+  // - img.geom prstGeom adı 'ellipse' veya 'oval' ise explicit
+  // - Kare boyut (aspect ~1) ise muhtemelen profil fotoğrafı
+  const geom = (img.geom ?? '').toLowerCase();
+  const isExplicitCircle =
+    geom === 'ellipse' ||
+    geom === 'oval' ||
+    geom === 'circle';
+  const aspect = base.width / Math.max(1, base.height);
+  const isSquareLike = aspect > 0.9 && aspect < 1.1;
+  const isCircular = isExplicitCircle || isSquareLike;
+
   return {
     id: newId('i', ctx),
     type: 'image',
@@ -593,7 +605,7 @@ function mapImage(img: PptxImage, ctx: MapContext, isLayout: boolean): ImageObje
     brightness: 100,
     contrast: 100,
     blur: 0,
-    borderRadius: 0,
+    borderRadius: isCircular ? Math.min(base.width, base.height) / 2 : 0,
     stroke: {
       color: img.borderColor || 'transparent',
       width: img.borderWidth || 0,
