@@ -209,6 +209,10 @@ export default function NewPresentationPage() {
                 disabled={isUploading || isImportingPptx}
               />
 
+              <p className="text-[10px] text-on-surface-variant/60 text-center -mt-2">
+                PPTX dosyaları güvenli bir Avrupa sunucusunda (ConvertAPI) dönüştürülür ve 24 saat içinde silinir (KVKK uyumlu).
+              </p>
+
               <PptxImportProgress progress={pptxProgress} />
 
               <UploadProgress

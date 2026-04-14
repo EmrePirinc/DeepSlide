@@ -2,28 +2,33 @@
 // Copyright (c) 2026 Emre Pirinc. All rights reserved.
 // Licensed under the Business Source License 1.1
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { PresentationImage } from '@/types/presentation';
-import type { CanvasSlide } from '@/types/slide-object';
-import type { PptxImportProgress, WorkerMessage, WorkerRequest, WorkerResult } from '@/lib/pptx/types';
-import { usePresentationStore } from '@/stores/presentationStore';
-import { useCanvasStore } from '@/stores/canvasStore';
-import { saveCanvasSlides } from '@/lib/db/canvas-objects';
-import { saveImageBlob } from '@/lib/db/images';
-import { renderCanvasSlideToBlob } from '@/lib/pptx/renderSlideToImage';
-import { resizeImage, blobToDataURL, THUMBNAIL_WIDTH } from '@/lib/utils/imageProcessing';
+/**
+ * usePptxImport — Sunucu tabanlı PPTX içe aktarma.
+ *
+ * Akış:
+ *   1. File → Vercel /api/pptx/convert (multipart)
+ *   2. Sunucu ConvertAPI'ye proxy → PNG URL listesi
+ *   3. İstemci her PNG'yi indirir → IndexedDB blob + thumbnail
+ *   4. PresentationImage[] store'a eklenir
+ */
 
-// DeepSlide SlideCanvas default boyutu 960×540. Hedef canvas'ı bu boyutlarda
-// tutmak object pozisyonlarının kırpılmamasını sağlar.
-const CANVAS_WIDTH = 960;
-const CANVAS_HEIGHT = 540;
-const MAX_FILE_MB = 100;
+import { useCallback, useState } from 'react';
+import type { PresentationImage } from '@/types/presentation';
+import type { PptxImportProgress, PptxConvertResponse } from '@/lib/pptx/types';
+import { usePresentationStore } from '@/stores/presentationStore';
+import { saveImageBlob } from '@/lib/db/images';
+import {
+  resizeImage,
+  blobToDataURL,
+  THUMBNAIL_WIDTH,
+} from '@/lib/utils/imageProcessing';
+
+const MAX_FILE_MB = 50;
 
 const INITIAL: PptxImportProgress = {
   phase: 'idle',
   totalSlides: 0,
   processedSlides: 0,
-  skipped: [],
 };
 
 interface UsePptxImportReturn {
@@ -35,17 +40,8 @@ interface UsePptxImportReturn {
 
 export function usePptxImport(): UsePptxImportReturn {
   const { currentPresentation, addImages } = usePresentationStore();
-  const { loadSlides } = useCanvasStore();
   const [progress, setProgress] = useState<PptxImportProgress>(INITIAL);
   const [isImporting, setIsImporting] = useState(false);
-  const workerRef = useRef<Worker | null>(null);
-
-  useEffect(() => {
-    return () => {
-      workerRef.current?.terminate();
-      workerRef.current = null;
-    };
-  }, []);
 
   const reset = useCallback(() => setProgress(INITIAL), []);
 
@@ -66,71 +62,68 @@ export function usePptxImport(): UsePptxImportReturn {
       }
 
       setIsImporting(true);
-      setProgress({ ...INITIAL, phase: 'parsing' });
+      setProgress({ ...INITIAL, phase: 'uploading' });
 
       try {
-        const buffer = await file.arrayBuffer();
-        const result = await runWorker(
-          {
-            buffer,
-            presentationId: currentPresentation.id,
-            canvasWidth: CANVAS_WIDTH,
-            canvasHeight: CANVAS_HEIGHT,
-          },
-          workerRef,
-          (phase, total, processed) => {
-            setProgress((prev) => ({ ...prev, phase, totalSlides: total, processedSlides: processed }));
-          },
-        );
+        // 1) Multipart upload → Vercel API
+        const formData = new FormData();
+        formData.append('file', file);
 
-        // Worker resimlerinin blob'larını IndexedDB'ye yaz
-        setProgress((prev) => ({ ...prev, phase: 'saving', skipped: result.skipped }));
+        setProgress((prev) => ({ ...prev, phase: 'converting' }));
+        const res = await fetch('/api/pptx/convert', {
+          method: 'POST',
+          body: formData,
+        });
 
-        const imageMap = new Map<string, string>();
-        for (const img of result.images) {
-          imageMap.set(img.blobKey, img.dataUrl);
-          try {
-            const blob = await dataUrlToBlob(img.dataUrl);
-            await saveImageBlob(img.blobKey, currentPresentation.id, blob);
-          } catch (err) {
-            console.error('[PPTX] Image blob kayıt hatası', err);
-          }
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({ error: res.statusText }));
+          throw new Error(body.error ?? `HTTP ${res.status}`);
         }
 
-        // Her CanvasSlide için thumbnail + full render üret, PresentationImage oluştur
-        setProgress((prev) => ({ ...prev, phase: 'rendering' }));
+        const data = (await res.json()) as PptxConvertResponse;
+        const totalSlides = data.files.length;
+
+        setProgress((prev) => ({
+          ...prev,
+          phase: 'downloading',
+          totalSlides,
+        }));
+
+        // 2) Her PNG'yi indir + IndexedDB blob + thumbnail + PresentationImage
         const newImages: PresentationImage[] = [];
         const slideOrderBase = currentPresentation.images.length;
 
-        for (let i = 0; i < result.slides.length; i++) {
-          const slide = result.slides[i];
-          // Slayt ID'si = image ID (canvas-objects.ts sync pattern)
-          const imageId = slide.id;
-
+        for (let i = 0; i < data.files.length; i++) {
+          const fileInfo = data.files[i];
           try {
-            // Full-res PNG (1920x1080)
-            const fullBlob = await renderCanvasSlideToBlob(slide, {
-              width: CANVAS_WIDTH,
-              height: CANVAS_HEIGHT,
-              imageMap,
-            });
-            const fullFile = new File([fullBlob], `slide-${i + 1}.png`, { type: 'image/png' });
-            const blobKey = `${currentPresentation.id}_${imageId}`;
-            await saveImageBlob(blobKey, currentPresentation.id, fullFile);
+            const pngRes = await fetch(fileInfo.url);
+            if (!pngRes.ok) throw new Error(`PNG indirilemedi (${pngRes.status})`);
+            const pngBlob = await pngRes.blob();
+
+            const id = crypto.randomUUID();
+            const blobKey = `${currentPresentation.id}_${id}`;
+            await saveImageBlob(blobKey, currentPresentation.id, pngBlob);
 
             // Thumbnail
-            const thumbBlob = await resizeImage(fullFile, THUMBNAIL_WIDTH, 0.7);
+            const pngFile = new File([pngBlob], fileInfo.fileName, { type: 'image/png' });
+            const thumbBlob = await resizeImage(pngFile, THUMBNAIL_WIDTH, 0.7);
             const thumbnailDataUrl = await blobToDataURL(thumbBlob);
 
+            // Boyutları al
+            const bitmap = await createImageBitmap(pngBlob);
+            const width = bitmap.width;
+            const height = bitmap.height;
+            bitmap.close();
+
             newImages.push({
-              id: imageId,
+              id,
               presentationId: currentPresentation.id,
-              fileName: `${file.name.replace(/\.pptx$/i, '')}-slide-${i + 1}.png`,
+              fileName: `${file.name.replace(/\.(pptx|ppt)$/i, '')}-slide-${i + 1}.png`,
               mimeType: 'image/png',
               blobKey,
               thumbnailDataUrl,
-              width: CANVAS_WIDTH,
-              height: CANVAS_HEIGHT,
+              width,
+              height,
               order: slideOrderBase + i,
               keywords: [],
               analysisStatus: 'pending',
@@ -140,30 +133,22 @@ export function usePptxImport(): UsePptxImportReturn {
 
             setProgress((prev) => ({ ...prev, processedSlides: i + 1 }));
           } catch (err) {
-            console.error('[PPTX] Slayt render hatası', i, err);
+            console.error('[PPTX] Slayt indirme hatası', i, err);
           }
         }
 
-        // Slayt ID'lerini PresentationImage ID'leriyle senkronize et
-        const finalSlides: CanvasSlide[] = result.slides.map((s, i) => ({
-          ...s,
-          id: newImages[i]?.id ?? s.id,
-          order: slideOrderBase + i,
-        }));
-
-        // IndexedDB + stores
-        await saveCanvasSlides(finalSlides);
-        if (newImages.length > 0) {
-          await addImages(newImages);
+        if (newImages.length === 0) {
+          throw new Error('Hiç slayt oluşturulamadı');
         }
-        loadSlides(currentPresentation.id, finalSlides);
+
+        setProgress((prev) => ({ ...prev, phase: 'saving' }));
+        await addImages(newImages);
 
         setProgress((prev) => ({
           ...prev,
           phase: 'done',
-          totalSlides: finalSlides.length,
-          processedSlides: finalSlides.length,
-          skipped: result.skipped,
+          totalSlides,
+          processedSlides: newImages.length,
         }));
       } catch (err) {
         console.error('[PPTX] Import hatası', err);
@@ -176,54 +161,8 @@ export function usePptxImport(): UsePptxImportReturn {
         setIsImporting(false);
       }
     },
-    [currentPresentation, addImages, loadSlides],
+    [currentPresentation, addImages],
   );
 
   return { importPptx, progress, isImporting, reset };
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// Helpers
-
-function runWorker(
-  req: WorkerRequest,
-  ref: React.MutableRefObject<Worker | null>,
-  onProgress: (phase: PptxImportProgress['phase'], total: number, processed: number) => void,
-): Promise<WorkerResult> {
-  return new Promise((resolve, reject) => {
-    // Next.js / Turbopack Worker bundling: new Worker(new URL(...), { type: 'module' })
-    const worker = new Worker(
-      new URL('../workers/pptxWorker.ts', import.meta.url),
-      { type: 'module' },
-    );
-    ref.current = worker;
-
-    worker.addEventListener('message', (e: MessageEvent<WorkerMessage>) => {
-      const msg = e.data;
-      if (msg.kind === 'progress') {
-        onProgress(msg.phase, msg.totalSlides, msg.processedSlides);
-      } else if (msg.kind === 'result') {
-        worker.terminate();
-        ref.current = null;
-        resolve(msg.result);
-      } else if (msg.kind === 'error') {
-        worker.terminate();
-        ref.current = null;
-        reject(new Error(msg.message));
-      }
-    });
-
-    worker.addEventListener('error', (err) => {
-      worker.terminate();
-      ref.current = null;
-      reject(err.error ?? new Error('Worker hata'));
-    });
-
-    worker.postMessage(req, [req.buffer]);
-  });
-}
-
-async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
-  const res = await fetch(dataUrl);
-  return res.blob();
 }

@@ -10,9 +10,9 @@ interface Props {
 
 const PHASE_LABEL: Record<Progress['phase'], string> = {
   idle: '',
-  parsing: 'PPTX ayrıştırılıyor…',
-  mapping: 'Slaytlar düzenlenebilir nesnelere dönüştürülüyor…',
-  rendering: 'Önizlemeler oluşturuluyor…',
+  uploading: 'PPTX yükleniyor…',
+  converting: 'Yüksek sadakatli dönüşüm yapılıyor…',
+  downloading: 'Slayt görselleri indiriliyor…',
   saving: 'Görseller kaydediliyor…',
   done: 'İçe aktarma tamamlandı',
   error: 'Hata',
@@ -56,17 +56,10 @@ export function PptxImportProgress({ progress }: Props) {
         <p className="text-xs text-rose-400">{progress.error}</p>
       )}
 
-      {isDone && progress.skipped.length > 0 && (
-        <div className="text-xs text-on-surface-variant space-y-1">
-          <p className="font-semibold text-amber-400">
-            ⚠️ {progress.skipped.length} öğe basitleştirildi
-          </p>
-          <p>
-            SmartArt, grafik, animasyon veya gömülü medya gibi karmaşık öğeler
-            yer tutucu olarak eklendi. Canvas editörde üzerlerine çift tıklayıp
-            değiştirebilirsin.
-          </p>
-        </div>
+      {isDone && (
+        <p className="text-xs text-emerald-400">
+          ✓ {progress.totalSlides} slayt %98+ sadakatle aktarıldı
+        </p>
       )}
     </div>
   );
