@@ -162,11 +162,33 @@ export function mapPresentationToCanvas(
       }
     }
 
-    // 4. IMAGE-OVERLAY DEDUP: PPTX'te kompozit fotoğraflar (face+name+role tek resim)
-    //    yaygındır. Bir text'in alanı bir image'ın bounding box'ı içindeyse veya
-    //    50px yakınındaysa text'i kaldır — image zaten o yazıyı içeriyor.
+    // 4. IMAGE-OVERLAY DEDUP: PPTX'te slayt ekran görüntüsü olarak gömülü +
+    //    üstüne ayrı metin shape'leri eklenmiş olabiliyor. Bir text image
+    //    bounds'ı içindeyse veya yakınındaysa kaldır (image zaten içeriyor).
+    //    Slayt alanının >30%'sini kaplayan image'lar 'background screenshot'
+    //    sayılır; içine düşen tüm text'ler dropped edilir.
     const imageObjects = slide.objects.filter((o) => o.type === 'image') as ImageObject[];
     if (imageObjects.length > 0) {
+      const slideArea = 960 * 540;
+      const bigImages = imageObjects.filter((img) => img.width * img.height > slideArea * 0.3);
+      if (bigImages.length > 0) {
+        slide.objects = slide.objects.filter((obj) => {
+          if (obj.type !== 'text') return true;
+          const t = obj as TextObject;
+          for (const img of bigImages) {
+            if (
+              t.x >= img.x - 20 &&
+              t.y >= img.y - 20 &&
+              t.x + t.width <= img.x + img.width + 20 &&
+              t.y + t.height <= img.y + img.height + 20
+            ) {
+              return false;
+            }
+          }
+          return true;
+        });
+      }
+      // Normal image-overlap dedup — geniş tolerance ve merkez kontrolü
       slide.objects = slide.objects.filter((obj) => {
         if (obj.type !== 'text') return true;
         const t = obj as TextObject;
@@ -174,16 +196,23 @@ export function mapPresentationToCanvas(
         const ty1 = t.y;
         const tx2 = t.x + t.width;
         const ty2 = t.y + t.height;
+        const tcx = (tx1 + tx2) / 2;
+        const tcy = (ty1 + ty2) / 2;
         for (const img of imageObjects) {
-          const ix1 = img.x - 40;
-          const iy1 = img.y - 40;
-          const ix2 = img.x + img.width + 40;
-          const iy2 = img.y + img.height + 40;
-          // Text image bounds'ı içinde mi (genişletilmiş)?
+          // Tolerance: image boyutunun %40'ı, min 80px
+          const tolX = Math.max(80, img.width * 0.4);
+          const tolY = Math.max(80, img.height * 0.4);
+          const ix1 = img.x - tolX;
+          const iy1 = img.y - tolY;
+          const ix2 = img.x + img.width + tolX;
+          const iy2 = img.y + img.height + tolY;
+          if (tcx >= ix1 && tcx <= ix2 && tcy >= iy1 && tcy <= iy2) {
+            return false;
+          }
           const overlapX = Math.max(0, Math.min(tx2, ix2) - Math.max(tx1, ix1));
           const overlapY = Math.max(0, Math.min(ty2, iy2) - Math.max(ty1, iy1));
           if (overlapX > 0 && overlapY > 0) {
-            return false; // text image alanında → at
+            return false;
           }
         }
         return true;
