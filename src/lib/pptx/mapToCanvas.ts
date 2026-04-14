@@ -161,6 +161,34 @@ export function mapPresentationToCanvas(
         sh.textFontSize = undefined;
       }
     }
+
+    // 4. IMAGE-OVERLAY DEDUP: PPTX'te kompozit fotoğraflar (face+name+role tek resim)
+    //    yaygındır. Bir text'in alanı bir image'ın bounding box'ı içindeyse veya
+    //    50px yakınındaysa text'i kaldır — image zaten o yazıyı içeriyor.
+    const imageObjects = slide.objects.filter((o) => o.type === 'image') as ImageObject[];
+    if (imageObjects.length > 0) {
+      slide.objects = slide.objects.filter((obj) => {
+        if (obj.type !== 'text') return true;
+        const t = obj as TextObject;
+        const tx1 = t.x;
+        const ty1 = t.y;
+        const tx2 = t.x + t.width;
+        const ty2 = t.y + t.height;
+        for (const img of imageObjects) {
+          const ix1 = img.x - 40;
+          const iy1 = img.y - 40;
+          const ix2 = img.x + img.width + 40;
+          const iy2 = img.y + img.height + 40;
+          // Text image bounds'ı içinde mi (genişletilmiş)?
+          const overlapX = Math.max(0, Math.min(tx2, ix2) - Math.max(tx1, ix1));
+          const overlapY = Math.max(0, Math.min(ty2, iy2) - Math.max(ty1, iy1));
+          if (overlapX > 0 && overlapY > 0) {
+            return false; // text image alanında → at
+          }
+        }
+        return true;
+      });
+    }
   }
 
   if (typeof console !== 'undefined') {
