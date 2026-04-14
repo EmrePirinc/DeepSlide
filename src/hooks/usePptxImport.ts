@@ -3,18 +3,18 @@
 // Licensed under the Business Source License 1.1
 
 /**
- * usePptxImport — Sunucu tabanlı PPTX içe aktarma.
+ * usePptxImport — CloudConvert tabanlı PPTX içe aktarma.
  *
  * Akış:
- *   1. File → Vercel /api/pptx/convert (multipart)
- *   2. Sunucu ConvertAPI'ye proxy → PNG URL listesi
- *   3. İstemci her PNG'yi indirir → IndexedDB blob + thumbnail
- *   4. PresentationImage[] store'a eklenir
+ *   1. POST /api/pptx/convert {action:'create'} → jobId + uploadForm
+ *   2. Client direkt CloudConvert'e multipart POST (Vercel 4.5MB bypass)
+ *   3. POST /api/pptx/convert {action:'wait', jobId} → PNG URL listesi
+ *   4. Her PNG indirilir → IndexedDB + PresentationImage
  */
 
 import { useCallback, useState } from 'react';
 import type { PresentationImage } from '@/types/presentation';
-import type { PptxImportProgress, PptxConvertResponse } from '@/lib/pptx/types';
+import type { PptxImportProgress } from '@/lib/pptx/types';
 import { usePresentationStore } from '@/stores/presentationStore';
 import { saveImageBlob } from '@/lib/db/images';
 import {
@@ -23,7 +23,7 @@ import {
   THUMBNAIL_WIDTH,
 } from '@/lib/utils/imageProcessing';
 
-const MAX_FILE_MB = 50;
+const MAX_FILE_MB = 100;
 
 const INITIAL: PptxImportProgress = {
   phase: 'idle',
@@ -36,6 +36,21 @@ interface UsePptxImportReturn {
   progress: PptxImportProgress;
   isImporting: boolean;
   reset: () => void;
+}
+
+interface UploadForm {
+  url: string;
+  parameters: Record<string, string>;
+}
+
+interface CreateResponse {
+  jobId: string;
+  uploadForm: UploadForm;
+}
+
+interface WaitResponse {
+  files: Array<{ url: string; fileName: string; fileSize: number }>;
+  slideCount: number;
 }
 
 export function usePptxImport(): UsePptxImportReturn {
@@ -56,7 +71,7 @@ export function usePptxImport(): UsePptxImportReturn {
         setProgress({
           ...INITIAL,
           phase: 'error',
-          error: `Dosya çok büyük (${sizeMB.toFixed(1)}MB). Maksimum ${MAX_FILE_MB}MB.`,
+          error: `Dosya çok büyük (${sizeMB.toFixed(1)}MB). Maks ${MAX_FILE_MB}MB.`,
         });
         return;
       }
@@ -65,36 +80,63 @@ export function usePptxImport(): UsePptxImportReturn {
       setProgress({ ...INITIAL, phase: 'uploading' });
 
       try {
-        // 1) Multipart upload → Vercel API
-        const formData = new FormData();
-        formData.append('file', file);
-
-        setProgress((prev) => ({ ...prev, phase: 'converting' }));
-        const res = await fetch('/api/pptx/convert', {
+        // 1) Job oluştur — upload form al
+        const createRes = await fetch('/api/pptx/convert', {
           method: 'POST',
-          body: formData,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'create',
+            fileName: file.name,
+            fileSize: file.size,
+          }),
         });
+        if (!createRes.ok) {
+          const body = await createRes.json().catch(() => ({ error: createRes.statusText }));
+          throw new Error(body.error ?? `HTTP ${createRes.status}`);
+        }
+        const createData = (await createRes.json()) as CreateResponse;
 
-        if (!res.ok) {
-          const body = await res.json().catch(() => ({ error: res.statusText }));
-          throw new Error(body.error ?? `HTTP ${res.status}`);
+        // 2) Direkt CloudConvert'e upload — Vercel body limit'i bypass
+        const uploadFormData = new FormData();
+        for (const [key, value] of Object.entries(createData.uploadForm.parameters)) {
+          uploadFormData.append(key, value);
+        }
+        uploadFormData.append('file', file);
+
+        const uploadRes = await fetch(createData.uploadForm.url, {
+          method: 'POST',
+          body: uploadFormData,
+        });
+        if (!uploadRes.ok) {
+          throw new Error(`CloudConvert upload başarısız: ${uploadRes.status}`);
         }
 
-        const data = (await res.json()) as PptxConvertResponse;
-        const totalSlides = data.files.length;
+        // 3) Conversion sonucunu bekle
+        setProgress((prev) => ({ ...prev, phase: 'converting' }));
+        const waitRes = await fetch('/api/pptx/convert', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'wait', jobId: createData.jobId }),
+        });
+        if (!waitRes.ok) {
+          const body = await waitRes.json().catch(() => ({ error: waitRes.statusText }));
+          throw new Error(body.error ?? `HTTP ${waitRes.status}`);
+        }
+        const waitData = (await waitRes.json()) as WaitResponse;
+        const totalSlides = waitData.files.length;
 
+        // 4) PNG'leri indir + PresentationImage oluştur
         setProgress((prev) => ({
           ...prev,
           phase: 'downloading',
           totalSlides,
         }));
 
-        // 2) Her PNG'yi indir + IndexedDB blob + thumbnail + PresentationImage
         const newImages: PresentationImage[] = [];
         const slideOrderBase = currentPresentation.images.length;
 
-        for (let i = 0; i < data.files.length; i++) {
-          const fileInfo = data.files[i];
+        for (let i = 0; i < waitData.files.length; i++) {
+          const fileInfo = waitData.files[i];
           try {
             const pngRes = await fetch(fileInfo.url);
             if (!pngRes.ok) throw new Error(`PNG indirilemedi (${pngRes.status})`);
@@ -104,12 +146,10 @@ export function usePptxImport(): UsePptxImportReturn {
             const blobKey = `${currentPresentation.id}_${id}`;
             await saveImageBlob(blobKey, currentPresentation.id, pngBlob);
 
-            // Thumbnail
             const pngFile = new File([pngBlob], fileInfo.fileName, { type: 'image/png' });
             const thumbBlob = await resizeImage(pngFile, THUMBNAIL_WIDTH, 0.7);
             const thumbnailDataUrl = await blobToDataURL(thumbBlob);
 
-            // Boyutları al
             const bitmap = await createImageBitmap(pngBlob);
             const width = bitmap.width;
             const height = bitmap.height;
