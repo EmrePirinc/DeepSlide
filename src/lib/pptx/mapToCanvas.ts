@@ -162,60 +162,23 @@ export function mapPresentationToCanvas(
       }
     }
 
-    // 4. IMAGE-OVERLAY DEDUP: PPTX'te slayt ekran görüntüsü olarak gömülü +
-    //    üstüne ayrı metin shape'leri eklenmiş olabiliyor. Bir text image
-    //    bounds'ı içindeyse veya yakınındaysa kaldır (image zaten içeriyor).
-    //    Slayt alanının >30%'sini kaplayan image'lar 'background screenshot'
-    //    sayılır; içine düşen tüm text'ler dropped edilir.
+    // 4. BACKGROUND SCREENSHOT DEDUP: Eğer tek bir image slaytın >60%'ini
+    //    kaplıyorsa bu bir full-slide screenshot demektir. Üstüne eklenen
+    //    text'ler aynı içeriğin üstüne bindirilmiş tekrar olabilir — sil.
+    //    Daha konservatif: sadece gerçekten BÜYÜK bir image varsa uygulanır.
     const imageObjects = slide.objects.filter((o) => o.type === 'image') as ImageObject[];
-    if (imageObjects.length > 0) {
-      const slideArea = 960 * 540;
-      const bigImages = imageObjects.filter((img) => img.width * img.height > slideArea * 0.3);
-      if (bigImages.length > 0) {
-        slide.objects = slide.objects.filter((obj) => {
-          if (obj.type !== 'text') return true;
-          const t = obj as TextObject;
-          for (const img of bigImages) {
-            if (
-              t.x >= img.x - 20 &&
-              t.y >= img.y - 20 &&
-              t.x + t.width <= img.x + img.width + 20 &&
-              t.y + t.height <= img.y + img.height + 20
-            ) {
-              return false;
-            }
-          }
-          return true;
-        });
-      }
-      // Normal image-overlap dedup — geniş tolerance ve merkez kontrolü
+    const slideArea = 960 * 540;
+    const bgScreenshot = imageObjects.find((img) => img.width * img.height > slideArea * 0.6);
+    if (bgScreenshot) {
       slide.objects = slide.objects.filter((obj) => {
         if (obj.type !== 'text') return true;
         const t = obj as TextObject;
-        const tx1 = t.x;
-        const ty1 = t.y;
-        const tx2 = t.x + t.width;
-        const ty2 = t.y + t.height;
-        const tcx = (tx1 + tx2) / 2;
-        const tcy = (ty1 + ty2) / 2;
-        for (const img of imageObjects) {
-          // Tolerance: image boyutunun %40'ı, min 80px
-          const tolX = Math.max(80, img.width * 0.4);
-          const tolY = Math.max(80, img.height * 0.4);
-          const ix1 = img.x - tolX;
-          const iy1 = img.y - tolY;
-          const ix2 = img.x + img.width + tolX;
-          const iy2 = img.y + img.height + tolY;
-          if (tcx >= ix1 && tcx <= ix2 && tcy >= iy1 && tcy <= iy2) {
-            return false;
-          }
-          const overlapX = Math.max(0, Math.min(tx2, ix2) - Math.max(tx1, ix1));
-          const overlapY = Math.max(0, Math.min(ty2, iy2) - Math.max(ty1, iy1));
-          if (overlapX > 0 && overlapY > 0) {
-            return false;
-          }
-        }
-        return true;
+        return !(
+          t.x >= bgScreenshot.x - 10 &&
+          t.y >= bgScreenshot.y - 10 &&
+          t.x + t.width <= bgScreenshot.x + bgScreenshot.width + 10 &&
+          t.y + t.height <= bgScreenshot.y + bgScreenshot.height + 10
+        );
       });
     }
   }
@@ -419,10 +382,17 @@ function mapShapeAsImage(shape: PptxShape, ctx: MapContext, isLayout: boolean): 
   const mimeType = dataUrl.startsWith('data:') ? dataUrl.split(';')[0].slice(5) : 'image/png';
   ctx.images.push({ blobKey, dataUrl, mimeType });
 
-  const isCircular =
+  // Daire/oval tespit:
+  // - Explicit shape type ellipse/oval/circle
+  // - VEYA kare boyut (aspect ratio ~1) — PPTX profil fotoğrafları genelde
+  //   bu şekilde: explicit circle shape + kare image fill
+  const isExplicitCircle =
     shape.shapType === 'ellipse' ||
     shape.shapType === 'oval' ||
     shape.shapType === 'circle';
+  const aspect = base.width / Math.max(1, base.height);
+  const isSquareLike = aspect > 0.9 && aspect < 1.1;
+  const isCircular = isExplicitCircle || isSquareLike;
 
   return {
     id: newId('i', ctx),
