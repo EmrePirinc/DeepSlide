@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline';" />
+  <title>DeepSlide — Model Yöneticisi</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface2: #273449;
+      --border: #334155;
+      --accent: #6366f1;
+      --accent-hover: #818cf8;
+      --text: #f1f5f9;
+      --muted: #94a3b8;
+      --green: #22c55e;
+      --red: #ef4444;
+      --yellow: #eab308;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
+      user-select: none;
+      overflow-x: hidden;
+    }
+
+    /* Titlebar */
+    .titlebar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      -webkit-app-region: drag;
+    }
+
+    .titlebar-logo {
+      width: 24px;
+      height: 24px;
+      background: var(--accent);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: white;
+      flex-shrink: 0;
+    }
+
+    .titlebar h1 {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .titlebar .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--green);
+      margin-left: auto;
+      flex-shrink: 0;
+    }
+
+    .titlebar .status-dot.stopped { background: var(--red); }
+    .titlebar .status-dot.starting { background: var(--yellow); animation: pulse 1s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Content */
+    .content {
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      height: calc(100vh - 53px);
+      overflow-y: auto;
+    }
+
+    /* Section */
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+
+    /* Status card */
+    .status-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .status-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+
+    .status-icon.running { background: rgba(34, 197, 94, 0.15); }
+    .status-icon.stopped { background: rgba(239, 68, 68, 0.15); }
+    .status-icon.starting { background: rgba(234, 179, 8, 0.15); }
+
+    .status-info p { font-size: 13px; font-weight: 600; }
+    .status-info span { font-size: 12px; color: var(--muted); }
+
+    /* Model listesi */
+    .model-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .model-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      transition: border-color 0.15s;
+    }
+
+    .model-card:hover { border-color: var(--accent); }
+
+    .model-badge {
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+      background: var(--surface2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      flex-shrink: 0;
+    }
+
+    .model-info { flex: 1; min-width: 0; }
+    .model-name { font-weight: 600; font-size: 13px; }
+    .model-meta { font-size: 11px; color: var(--muted); margin-top: 1px; }
+
+    .model-speed {
+      font-size: 10px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: rgba(99, 102, 241, 0.2);
+      color: var(--accent-hover);
+    }
+
+    .model-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
+
+    .btn {
+      padding: 6px 12px;
+      border-radius: 7px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: opacity 0.15s, background 0.15s;
+    }
+
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:not(:disabled):hover { background: var(--accent-hover); }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:not(:disabled):hover { color: var(--red); border-color: var(--red); }
+
+    .btn-installed {
+      background: rgba(34, 197, 94, 0.15);
+      color: var(--green);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      pointer-events: none;
+    }
+
+    /* Progress bar */
+    .progress-wrap {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      width: 100%;
+    }
+
+    .progress-bar {
+      height: 4px;
+      background: var(--surface2);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      transition: width 0.2s ease;
+    }
+
+    .progress-label {
+      font-size: 10px;
+      color: var(--muted);
+    }
+
+    /* Footer */
+    .footer {
+      margin-top: auto;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .footer a {
+      font-size: 11px;
+      color: var(--muted);
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .footer a:hover { color: var(--accent-hover); }
+
+    .empty-state {
+      text-align: center;
+      padding: 30px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .loader {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(99, 102, 241, 0.3);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="titlebar">
+    <div class="titlebar-logo">D</div>
+    <h1>DeepSlide Local AI</h1>
+    <div class="status-dot starting" id="statusDot"></div>
+  </div>
+
+  <div class="content">
+    <!-- Durum Kartı -->
+    <div>
+      <div class="section-title">Durum</div>
+      <div class="status-card" id="statusCard">
+        <div class="status-icon starting" id="statusIcon">⏳</div>
+        <div class="status-info">
+          <p id="statusText">Başlatılıyor...</p>
+          <span id="statusSub">Ollama motoru hazırlanıyor</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modeller -->
+    <div>
+      <div class="section-title">AI Modelleri</div>
+      <div class="model-list" id="modelList">
+        <div class="empty-state">
+          <span class="loader"></span> Yükleniyor...
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <a onclick="openExternal('https://app.deepslide.com')">DeepSlide\'ı Aç</a>
+      <a onclick="openExternal('https://ollama.com/library')">Tüm Modeller</a>
+    </div>
+  </div>
+
+  <script>
+    const api = window.deepslideAI;
+
+    let installedModelNames = new Set();
+    let activeDownloads = new Map(); // modelId → { percent, status }
+
+    // İndirme progress dinleyicisi
+    const cleanup = api.onPullProgress((data) => {
+      activeDownloads.set(data.modelId, {
+        percent: data.percent ?? 0,
+        status: data.status,
+      });
+
+      // İndirme tamamlandıysa
+      if (data.status === 'success' || (data.percent !== undefined && data.percent >= 100)) {
+        setTimeout(() => {
+          activeDownloads.delete(data.modelId);
+          loadAll();
+        }, 800);
+      } else {
+        renderModels();
+      }
+    });
+
+    async function loadAll() {
+      await Promise.all([checkStatus(), loadModels()]);
+    }
+
+    async function checkStatus() {
+      const { running, status } = await api.getStatus();
+      const dot = document.getElementById('statusDot');
+      const icon = document.getElementById('statusIcon');
+      const text = document.getElementById('statusText');
+      const sub = document.getElementById('statusSub');
+      const card = document.getElementById('statusIcon');
+
+      if (running) {
+        dot.className = 'status-dot';
+        card.className = 'status-icon running';
+        icon.textContent = '✅';
+        text.textContent = 'Çalışıyor';
+        sub.textContent = `localhost:11434 • Hazır`;
+      } else {
+        dot.className = 'status-dot stopped';
+        card.className = 'status-icon stopped';
+        icon.textContent = '❌';
+        text.textContent = 'Durduruldu';
+        sub.textContent = 'Ollama başlatılamadı';
+      }
+    }
+
+    async function loadModels() {
+      const [{ models: installed }, recommended] = await Promise.all([
+        api.listModels(),
+        api.getRecommendedModels(),
+      ]);
+
+      installedModelNames = new Set(installed.map(m => m.name));
+
+      // Kurulu ama önerilen listede olmayanları da göster
+      const installedNotRecommended = installed.filter(
+        m => !recommended.some(r => m.name.startsWith(r.id.split(':')[0]))
+      );
+
+      const allModels = [
+        ...recommended,
+        ...installedNotRecommended.map(m => ({
+          id: m.name,
+          name: m.name,
+          size: (m.size / 1024 / 1024 / 1024).toFixed(1) + ' GB',
+          speed: '—',
+          description: 'Kurulu model',
+        })),
+      ];
+
+      window._allModels = allModels;
+      renderModels();
+    }
+
+    function renderModels() {
+      const list = document.getElementById('modelList');
+      const models = window._allModels || [];
+
+      if (models.length === 0) {
+        list.innerHTML = '<div class="empty-state">Henüz model yok.<br>Aşağıdan birini indir.</div>';
+        return;
+      }
+
+      list.innerHTML = models.map(model => {
+        const isInstalled = [...installedModelNames].some(n => n.startsWith(model.id.split(':')[0]));
+        const download = activeDownloads.get(model.id);
+        const isDownloading = !!download;
+
+        let actionHtml;
+        if (isDownloading) {
+          const pct = download.percent || 0;
+          actionHtml = `
+            <div class="progress-wrap">
+              <div class="progress-bar">
+                <div class="progress-fill" style="width:${pct}%"></div>
+              </div>
+              <div class="progress-label">${download.status} ${pct > 0 ? pct + '%' : ''}</div>
+            </div>`;
+        } else if (isInstalled) {
+          actionHtml = `
+            <div class="model-actions">
+              <span class="btn btn-installed">✓ Kurulu</span>
+              <button class="btn btn-ghost" onclick="deleteModel('${model.id}')">Sil</button>
+            </div>`;
+        } else {
+          actionHtml = `
+            <div class="model-actions">
+              <button class="btn btn-primary" onclick="pullModel('${model.id}')">İndir</button>
+            </div>`;
+        }
+
+        return `
+          <div class="model-card">
+            <div class="model-badge">🤖</div>
+            <div class="model-info">
+              <div class="model-name">${model.name}</div>
+              <div class="model-meta">${model.size}${model.description ? ' · ' + model.description : ''}</div>
+            </div>
+            ${model.speed && model.speed !== '—' ? `<span class="model-speed">${model.speed}</span>` : ''}
+            ${actionHtml}
+          </div>`;
+      }).join('');
+    }
+
+    async function pullModel(modelId) {
+      activeDownloads.set(modelId, { percent: 0, status: 'Başlatılıyor...' });
+      renderModels();
+      await api.pullModel(modelId);
+    }
+
+    async function deleteModel(modelId) {
+      if (!confirm(`"${modelId}" modelini silmek istediğinize emin misiniz?`)) return;
+      await api.deleteModel(modelId);
+      await loadAll();
+    }
+
+    function openExternal(url) {
+      api.openExternal(url);
+    }
+
+    // İlk yükleme
+    loadAll();
+
+    // Her 5 sn'de durum güncelle
+    setInterval(checkStatus, 5000);
+  </script>
+</body>
+</html>
