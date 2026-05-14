@@ -2,6 +2,8 @@
 
 **"Siz konuşun, sunumunuz sizi takip etsin."**
 
+🔗 **[Canlı Demo: deepslide.1takimstartuplar.com](https://deepslide.1takimstartuplar.com/)**
+
 DeepSlide, geleneksel tıklama tabanlı sunum yöntemlerini geride bırakan, ses komutlarıyla ve yapay zeka ile dinamik olarak yönetilen yeni nesil bir sunum platformudur. Sunum yaparken slaytları manuel olarak değiştirmek yerine, sadece anlatmak istediğiniz konuyu konuşursunuz ve DeepSlide sesinizi analiz ederek ilgili slaytı otomatik olarak ekrana getirir.
 
 ---
